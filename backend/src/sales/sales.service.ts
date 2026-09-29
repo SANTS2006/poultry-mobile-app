@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser, RequestMeta } from '../auth/auth.types';
 import { deriveUuid } from '../common/derive-uuid';
-import { daysBetween, fromDbDate, isValidDate, toDbDate } from '../common/dates';
+import { daysBetween, eventTime, fromDbDate, isValidDate, toDbDate } from '../common/dates';
 import { Page, paging } from '../common/pagination';
 import { CustomersService } from '../customers/customers.service';
 import { DomainEvents } from '../domain/events.service';
@@ -113,7 +113,7 @@ export class SalesService {
 
         // stock (row-locked) — fails with 409 if not enough eggs
         await this.inventory.post(tx, {
-          farmId, productId: unitMap.get('EGG')!.productId, type: 'SALE', quantityEggs: -eggs, occurredAt: new Date(),
+          farmId, productId: unitMap.get('EGG')!.productId, type: 'SALE', quantityEggs: -eggs, occurredAt: eventTime(date, today),
           sourceType: 'sale', sourceId: saleId, createdById: user.id,
         });
 

@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser, RequestMeta } from '../auth/auth.types';
-import { daysBetween, fromDbDate, isValidDate, toDbDate } from '../common/dates';
+import { daysBetween, eventTime, fromDbDate, isValidDate, toDbDate } from '../common/dates';
 import { Page, paging } from '../common/pagination';
 import { DomainEvents } from '../domain/events.service';
 import { FarmService } from '../domain/farm.service';
@@ -79,7 +79,7 @@ export class ProductionService {
         });
         if (total > 0) {
           await this.inventory.post(tx, {
-            farmId, productId: units.get('EGG')!.productId, type: 'PRODUCTION', quantityEggs: total, occurredAt: new Date(),
+            farmId, productId: units.get('EGG')!.productId, type: 'PRODUCTION', quantityEggs: total, occurredAt: eventTime(date, today),
             sourceType: 'production_record', sourceId: record.id, createdById: user.id,
           });
         }

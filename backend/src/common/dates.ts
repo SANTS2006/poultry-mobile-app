@@ -18,3 +18,11 @@ export const fromDbDate = (d: Date): string => d.toISOString().slice(0, 10);
 export function daysBetween(from: string, to: string): number {
   return Math.round((toDbDate(to).getTime() - toDbDate(from).getTime()) / 86_400_000);
 }
+
+/**
+ * Timestamp for a stock movement caused by a record dated `businessDate`: the real time for today's records, otherwise noon on that
+ * date (so back-dated production/sales land in the right reporting period instead of "whenever someone typed them in").
+ */
+export function eventTime(businessDate: string, today: string, now = new Date()): Date {
+  return businessDate === today ? now : new Date(`${businessDate}T12:00:00.000Z`);
+}
