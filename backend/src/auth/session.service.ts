@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditService } from '../audit/audit.service';
+import { DomainEvents } from '../domain/events.service';
 import { randomToken } from '../common/crypto/tokens';
 import { PrismaService } from '../prisma/prisma.service';
 import type { RequestMeta } from './auth.types';
@@ -17,6 +18,7 @@ export class SessionService {
     private readonly prisma: PrismaService,
     private readonly tokens: TokenService,
     private readonly audit: AuditService,
+    private readonly events: DomainEvents,
   ) {}
 
   /** Starts a new login (new token family). Returns the opaque refresh token — shown once, never stored in clear. */
@@ -84,7 +86,10 @@ export class SessionService {
   }
 
   async revokeFamily(familyId: string, reason: string): Promise<void> {
+    const s = await this.prisma.session.findFirst({ where: { familyId }, select: { userId: true } });
     await this.prisma.session.updateMany({ where: { familyId, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: reason } });
+    // live WebSocket connections of this device must drop immediately
+    if (s) this.events.emit({ name: 'session.revoked', entityId: s.userId, data: { familyId } });
   }
 
   /** Revokes every active session of a user, optionally keeping one family (e.g. the caller's after a password change). */
@@ -93,6 +98,7 @@ export class SessionService {
       where: { userId, revokedAt: null, ...(exceptFamilyId ? { familyId: { not: exceptFamilyId } } : {}) },
       data: { revokedAt: new Date(), revokedReason: reason },
     });
+    this.events.emit({ name: 'session.revoked', entityId: userId, data: { exceptFamilyId: exceptFamilyId ?? null } });
     return r.count;
   }
 

@@ -27,18 +27,23 @@ export class AuthenticationService {
    */
   async authenticateAccessToken(token: string): Promise<AuthUser> {
     const claims = this.tokens.verify(token, 'access');
+    return this.revalidate(claims.sub, claims.fid as string, claims.tv);
+  }
+
+  /** Re-checks live server state for an already-verified token (used per HTTP request and periodically for WebSockets). */
+  async revalidate(userId: string, familyId: string, tokenVersion: number): Promise<AuthUser> {
     const user = await this.prisma.user.findUnique({
-      where: { id: claims.sub },
+      where: { id: userId },
       include: {
         profile: true,
         roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } },
       },
     });
-    if (!user || user.deletedAt || user.status !== 'ACTIVE' || user.tokenVersion !== claims.tv) {
+    if (!user || user.deletedAt || user.status !== 'ACTIVE' || user.tokenVersion !== tokenVersion) {
       throw new UnauthorizedException(UNAUTHENTICATED);
     }
     const activeFamily = await this.prisma.session.findFirst({
-      where: { familyId: claims.fid, userId: user.id, revokedAt: null, expiresAt: { gt: new Date() } },
+      where: { familyId, userId: user.id, revokedAt: null, expiresAt: { gt: new Date() } },
       select: { id: true },
     });
     if (!activeFamily) throw new UnauthorizedException(UNAUTHENTICATED);
@@ -47,11 +52,16 @@ export class AuthenticationService {
       id: user.id,
       email: user.email,
       fullName: user.profile?.fullName ?? user.email,
-      familyId: claims.fid as string,
+      familyId,
       roles: user.roles.map((r) => r.role.code),
       permissions: [...new Set(user.roles.flatMap((r) => r.role.permissions.map((p) => p.permission.code)))],
       mfaEnabled: user.mfaEnabled,
     };
+  }
+
+  /** Verifies signature/claims only (no database) — used to read `exp`/`tv`/`fid` for a WebSocket handshake. */
+  verifyAccessClaims(token: string) {
+    return this.tokens.verify(token, 'access');
   }
 }
 
@@ -66,6 +76,7 @@ export class JwtAuthGuard implements CanActivate {
   constructor(private readonly reflector: Reflector, private readonly auth: AuthenticationService) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
+    if (ctx.getType() !== 'http') return true; // WebSocket connections authenticate in the gateway handshake
     if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, [ctx.getHandler(), ctx.getClass()])) return true;
     const req = ctx.switchToHttp().getRequest<import('express').Request & { user?: AuthUser }>();
     const token = bearerToken(req.headers.authorization);

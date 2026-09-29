@@ -5,6 +5,7 @@ import { AuthUser, RequestMeta } from '../auth/auth.types';
 import { EmailTokenService } from '../auth/email-token.service';
 import { MfaService } from '../auth/mfa.service';
 import { SessionService } from '../auth/session.service';
+import { DomainEvents } from '../domain/events.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { InviteUserDto, ListUsersQuery } from './users.dto';
 
@@ -30,6 +31,7 @@ export class UsersService {
     private readonly emailTokens: EmailTokenService,
     private readonly sessions: SessionService,
     private readonly mfa: MfaService,
+    private readonly events: DomainEvents,
   ) {}
 
   async list(q: ListUsersQuery) {
@@ -100,6 +102,7 @@ export class UsersService {
         before: { roles: before }, after: { roles: roleCodes }, reason, ip: meta.ip, requestId: meta.requestId,
       }, tx);
     });
+    this.events.emit({ name: 'access.changed', entityId: id, actorId: actor.id });
     return this.get(id);
   }
 
@@ -116,6 +119,7 @@ export class UsersService {
       }, tx);
     });
     await this.sessions.revokeAllForUser(id, 'account_disabled');
+    this.events.emit({ name: 'user.status_changed', entityId: id, actorId: actor.id, data: { status: 'DISABLED' } });
     return this.get(id);
   }
 

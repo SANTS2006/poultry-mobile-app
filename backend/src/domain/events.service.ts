@@ -7,7 +7,13 @@ export type DomainEventName =
   | 'sale.created' | 'sale.updated'
   | 'payment.created'
   | 'expense.created' | 'expense.updated'
-  | 'customer.created' | 'customer.updated';
+  | 'customer.created' | 'customer.updated'
+  | 'notification.created'
+  | 'user.status_changed'
+  | 'system.alert'
+  // internal (never sent to clients as-is): drive socket disconnects / permission re-checks
+  | 'session.revoked'
+  | 'access.changed';
 
 export interface DomainEvent {
   name: DomainEventName;

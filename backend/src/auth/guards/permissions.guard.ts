@@ -9,6 +9,7 @@ export class PermissionsGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(ctx: ExecutionContext): boolean {
+    if (ctx.getType() !== 'http') return true; // the gateway authorises each subscription itself
     const targets = [ctx.getHandler(), ctx.getClass()];
     if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, targets)) return true;
     const user = ctx.switchToHttp().getRequest<{ user?: AuthUser }>().user;

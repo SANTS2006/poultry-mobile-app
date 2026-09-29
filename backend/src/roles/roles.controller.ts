@@ -3,12 +3,13 @@ import { AuditService } from '../audit/audit.service';
 import type { AuthUser, RequestMeta } from '../auth/auth.types';
 import { CurrentUser, Meta } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { DomainEvents } from '../domain/events.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SetRolePermissionsDto } from '../users/users.dto';
 
 @Controller()
 export class RolesController {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly events: DomainEvents) {}
 
   /** Role list is needed to invite users. */
   @RequirePermissions('users.manage') @Get('roles')
@@ -38,6 +39,7 @@ export class RolesController {
         before: { permissions: before }, after: { permissions: [...dto.permissionCodes].sort() }, reason: dto.reason, ip: meta.ip, requestId: meta.requestId,
       }, tx);
     });
+    this.events.emit({ name: 'access.changed', entityId: id, actorId: actor.id, data: { roleId: id } }); // re-check every live connection
     return { id, code: role.code, permissions: [...dto.permissionCodes].sort() };
   }
 }

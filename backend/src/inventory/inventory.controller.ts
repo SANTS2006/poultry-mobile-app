@@ -46,18 +46,7 @@ export class InventoryController {
 
   @RequirePermissions('inventory.read') @Get()
   async current() {
-    const farmId = await this.farms.resolve();
-    const units = await this.pricing.unitsFor();
-    const productId = units.get('EGG')!.productId;
-    const eggs = await this.inventory.balance(farmId, productId);
-    const carton = units.get('CARTON')?.eggsPerUnit ?? 360;
-    const crate = units.get('CRATE')?.eggsPerUnit ?? 30;
-    const threshold = await this.settings.get<number>('inventory.lowStockThresholdEggs');
-    return {
-      farmId, productId, quantityEggs: eggs,
-      breakdown: { cartons: Math.floor(eggs / carton), crates: Math.floor((eggs % carton) / crate), eggs: eggs % crate },
-      lowStock: typeof threshold === 'number' && eggs < threshold, lowStockThresholdEggs: threshold,
-    };
+    return this.inventory.snapshot(await this.farms.resolve());
   }
 
   @RequirePermissions('inventory.read') @Get('transactions')

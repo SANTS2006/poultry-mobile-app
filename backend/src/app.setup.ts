@@ -5,6 +5,7 @@ import compression from 'compression';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import type { Env } from './config/env';
+import { SecureIoAdapter } from './realtime/io.adapter';
 
 /** Shared by main.ts and the e2e tests so tests exercise the real security configuration. */
 export function configureApp(app: INestApplication): void {
@@ -38,6 +39,7 @@ export function configureApp(app: INestApplication): void {
     maxAge: 600,
   });
 
+  app.useWebSocketAdapter(new SecureIoAdapter(app, config.get('CORS_ORIGINS', { infer: true })));
   app.setGlobalPrefix('v1', { exclude: ['health/live', 'health/ready'] });
   app.useGlobalPipes(
     new ValidationPipe({

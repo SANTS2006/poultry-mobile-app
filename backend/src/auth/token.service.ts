@@ -11,6 +11,7 @@ export interface TokenClaims {
   typ: TokenType;
   tv: number;
   fid?: string;
+  exp?: number;
 }
 
 export const ACCESS_TTL_SECONDS = 15 * 60;

@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { HttpThrottlerGuard } from './common/http-throttler.guard';
 import { LoggerModule } from 'nestjs-pino';
 import { parseEnv } from './config/env';
 import { loggerParams } from './common/logging/logger.config';
@@ -21,6 +22,8 @@ import { InventoryModule } from './inventory/inventory.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ProductionModule } from './production/production.module';
 import { SalesModule } from './sales/sales.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { RealtimeModule } from './realtime/realtime.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 
@@ -53,11 +56,13 @@ import { HealthModule } from './health/health.module';
     SalesModule,
     PaymentsModule,
     ExpensesModule,
+    DashboardModule,
+    RealtimeModule,
     HealthModule,
   ],
   providers: [
     // Order matters: rate-limit → authenticate → authorize. Authorization is deny-by-default (see PermissionsGuard).
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: HttpThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

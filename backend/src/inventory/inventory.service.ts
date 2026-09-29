@@ -1,5 +1,7 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { InventoryTxType, Prisma } from '@prisma/client';
+import { PricingService } from '../domain/pricing.service';
+import { SettingsService } from '../domain/settings.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface LedgerEntry {
@@ -23,7 +25,7 @@ export interface LedgerEntry {
  */
 @Injectable()
 export class InventoryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly pricing: PricingService, private readonly settings: SettingsService) {}
 
   async post(tx: Prisma.TransactionClient, e: LedgerEntry): Promise<{ balance: number; transactionId: string }> {
     await tx.$executeRaw`
@@ -51,5 +53,20 @@ export class InventoryService {
   async balance(farmId: string, productId: string): Promise<number> {
     const b = await this.prisma.inventoryBalance.findUnique({ where: { farmId_productId: { farmId, productId } } });
     return b?.quantityEggs ?? 0;
+  }
+
+  /** Current stock with a carton/crate/egg breakdown (conversion factors come from the unit table) and the low-stock flag. */
+  async snapshot(farmId: string) {
+    const units = await this.pricing.unitsFor();
+    const productId = units.get('EGG')!.productId;
+    const eggs = await this.balance(farmId, productId);
+    const carton = units.get('CARTON')?.eggsPerUnit ?? 360;
+    const crate = units.get('CRATE')?.eggsPerUnit ?? 30;
+    const threshold = await this.settings.get<number>('inventory.lowStockThresholdEggs');
+    return {
+      farmId, productId, quantityEggs: eggs,
+      breakdown: { cartons: Math.floor(eggs / carton), crates: Math.floor((eggs % carton) / crate), eggs: eggs % crate },
+      lowStock: typeof threshold === 'number' && eggs < threshold, lowStockThresholdEggs: threshold,
+    };
   }
 }
