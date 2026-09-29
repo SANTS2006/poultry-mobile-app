@@ -17,12 +17,14 @@ const schema = z
       .string()
       .default('')
       .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
+    APP_LINK_BASE: z.string().default('makarifor://'),
     EMAIL_HOST: z.string().default(''),
     EMAIL_PORT: z.coerce.number().int().default(587),
     EMAIL_USER: z.string().default(''),
     EMAIL_PASSWORD: z.string().default(''),
     EMAIL_FROM: z.string().default(''),
     PUSH_NOTIFICATION_CONFIG: z.string().default(''),
+    THROTTLE_OFF: z.enum(['0', '1']).optional(),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   })
   .superRefine((env, ctx) => {
@@ -38,6 +40,12 @@ const schema = z
         if (!/sslmode=(require|verify-full|verify-ca)/.test(env[k])) {
           ctx.addIssue({ code: 'custom', path: [k], message: 'must include sslmode=require (TLS is mandatory)' });
         }
+      }
+      if (env.THROTTLE_OFF === '1') {
+        ctx.addIssue({ code: 'custom', path: ['THROTTLE_OFF'], message: 'rate limiting cannot be disabled in staging/production' });
+      }
+      if (!env.EMAIL_HOST) {
+        ctx.addIssue({ code: 'custom', path: ['EMAIL_HOST'], message: 'required (email verification/reset cannot work without it)' });
       }
       if (env.CORS_ORIGINS.includes('*')) {
         ctx.addIssue({ code: 'custom', path: ['CORS_ORIGINS'], message: 'wildcard origin not allowed' });

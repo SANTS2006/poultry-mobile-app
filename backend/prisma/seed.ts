@@ -3,9 +3,7 @@
 import { PrismaClient } from '@prisma/client';
 import { DEFAULT_SETTINGS, EGG_UNITS, EXPENSE_CATEGORIES, PERMISSIONS, ROLES, SHIFTS } from '../src/common/permissions';
 
-const prisma = new PrismaClient();
-
-async function main(): Promise<void> {
+export async function seedReferenceData(prisma: PrismaClient): Promise<void> {
   for (const code of PERMISSIONS) {
     await prisma.permission.upsert({ where: { code }, update: {}, create: { code } });
   }
@@ -41,10 +39,13 @@ async function main(): Promise<void> {
   }
 }
 
-main()
-  .then(() => prisma.$disconnect())
-  .catch(async (e: unknown) => {
-    process.stderr.write(`Seed failed: ${e instanceof Error ? e.message : 'unknown'}\n`);
-    await prisma.$disconnect();
-    process.exit(1);
-  });
+if (require.main === module) {
+  const prisma = new PrismaClient();
+  seedReferenceData(prisma)
+    .then(() => prisma.$disconnect())
+    .catch(async (e: unknown) => {
+      process.stderr.write(`Seed failed: ${e instanceof Error ? e.message : 'unknown'}\n`);
+      await prisma.$disconnect();
+      process.exit(1);
+    });
+}

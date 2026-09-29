@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { IsInt, IsString, Min } from 'class-validator';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { Public } from '../src/auth/decorators/public.decorator';
 import { configureApp } from '../src/app.setup';
 import { GENERIC_ERROR_MESSAGE } from '../src/common/messages';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -12,6 +13,7 @@ class DummyDto {
   @IsInt() @Min(0) qty!: number;
 }
 
+@Public() // these probes exercise the error filter / validation, not authentication
 @Controller('_test')
 class TestController {
   constructor(private readonly prisma: PrismaService) {}

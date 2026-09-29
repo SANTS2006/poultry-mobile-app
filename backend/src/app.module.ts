@@ -6,6 +6,13 @@ import { LoggerModule } from 'nestjs-pino';
 import { parseEnv } from './config/env';
 import { loggerParams } from './common/logging/logger.config';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { AuditModule } from './audit/audit.module';
+import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from './auth/guards/permissions.guard';
+import { MailModule } from './mail/mail.module';
+import { RolesModule } from './roles/roles.module';
+import { UsersModule } from './users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 
@@ -19,12 +26,24 @@ import { HealthModule } from './health/health.module';
       },
     }),
     // Global baseline: 120 requests/min per client. Auth endpoints get stricter limits in Phase 4.
-    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: 60_000, limit: 120 }],
+      // Test-suites that create many logins set THROTTLE_OFF=1; never set in staging/production (see env validation).
+      skipIf: () => process.env.THROTTLE_OFF === '1',
+    }),
     PrismaModule,
+    AuditModule,
+    MailModule,
+    AuthModule,
+    UsersModule,
+    RolesModule,
     HealthModule,
   ],
   providers: [
+    // Order matters: rate-limit → authenticate → authorize. Authorization is deny-by-default (see PermissionsGuard).
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: PermissionsGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })

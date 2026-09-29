@@ -204,6 +204,7 @@ model MfaSecret {
   userId          String    @id @db.Uuid
   secretEncrypted String
   confirmedAt     DateTime? @db.Timestamptz
+  lastUsedStep    Int? // last accepted TOTP time-step: blocks code replay
   createdAt       DateTime  @default(now()) @db.Timestamptz
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
