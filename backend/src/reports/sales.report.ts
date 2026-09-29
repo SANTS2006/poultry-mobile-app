@@ -16,7 +16,11 @@ export async function salesReport(c: ReportContext): Promise<ReportResult> {
       ...(f.paymentStatus ? { paymentStatus: f.paymentStatus as never } : {}), ...(f.createdById ? { createdById: f.createdById } : {}),
       ...(f.unit ? { items: { some: { productUnit: { code: f.unit } } } } : {}),
     },
-    include: { items: { include: { productUnit: { select: { code: true } } } }, customer: { select: { id: true, name: true } } },
+    select: {
+      saleDate: true, number: true, total: true, discount: true, paidAmount: true, paymentStatus: true, needsReview: true, createdById: true,
+      items: { select: { quantity: true, baseEggs: true, lineTotal: true, productUnit: { select: { code: true } } } },
+      customer: { select: { id: true, name: true } },
+    },
     orderBy: [{ saleDate: 'asc' }, { createdAt: 'asc' }],
   });
 
