@@ -13,6 +13,14 @@ import { PermissionsGuard } from './auth/guards/permissions.guard';
 import { MailModule } from './mail/mail.module';
 import { RolesModule } from './roles/roles.module';
 import { UsersModule } from './users/users.module';
+import { CatalogModule } from './catalog/catalog.module';
+import { CustomersModule } from './customers/customers.module';
+import { DomainModule } from './domain/domain.module';
+import { ExpensesModule } from './expenses/expenses.module';
+import { InventoryModule } from './inventory/inventory.module';
+import { PaymentsModule } from './payments/payments.module';
+import { ProductionModule } from './production/production.module';
+import { SalesModule } from './sales/sales.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 
@@ -37,6 +45,14 @@ import { HealthModule } from './health/health.module';
     AuthModule,
     UsersModule,
     RolesModule,
+    DomainModule,
+    CatalogModule,
+    ProductionModule,
+    InventoryModule,
+    CustomersModule,
+    SalesModule,
+    PaymentsModule,
+    ExpensesModule,
     HealthModule,
   ],
   providers: [

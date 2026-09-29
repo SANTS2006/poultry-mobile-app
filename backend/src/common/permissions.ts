@@ -94,7 +94,9 @@ export const EGG_UNITS = [
 export const DEFAULT_SETTINGS: Record<string, unknown> = {
   'business.currency': 'NLe', // Q1 pending confirmation
   'business.timezone': 'Africa/Freetown',
-  'inventory.allowNegativeStock': false,
+  'production.maxEggsPerRecord': 50000, // sanity limit for one coop/shift entry
+  'production.backdateDays': 7, // older entries need production.update
+  'sales.backdateDays': 31,
   'inventory.lowStockThresholdEggs': 1000,
   'sales.creditEnabled': false,
   'expenses.approvalThreshold': null,

@@ -1,3 +1,4 @@
+import { execSync } from 'child_process';
 import { Controller, Get, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PrismaClient } from '@prisma/client';
@@ -71,3 +72,20 @@ export const bearer = (t: string) => ({ Authorization: `Bearer ${t}` });
 
 /** TOTP code for the given base32 secret at time `atMs`. */
 export const totpAt = (secretB32: string, atMs: number): string => hotp(base32Decode(secretB32), Math.floor(atMs / 1000 / 30));
+
+/**
+ * Gives a test file its own PostgreSQL schema inside the *_test database (fresh migrations applied), so suites that need a
+ * pristine "single farm" world cannot be disturbed by data other suites leave behind. Call BEFORE createApp().
+ */
+export async function useIsolatedSchema(name: string): Promise<void> {
+  const base = new URL(process.env.DATABASE_URL as string);
+  if (!/_test$/.test(base.pathname.replace('/', ''))) throw new Error('Refusing to use a schema outside a *_test database');
+  base.searchParams.set('schema', name);
+  const admin = new PrismaClient();
+  await admin.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${name}" CASCADE`);
+  await admin.$executeRawUnsafe(`CREATE SCHEMA "${name}"`);
+  await admin.$disconnect();
+  process.env.DATABASE_URL = base.toString();
+  process.env.DIRECT_DATABASE_URL = base.toString();
+  execSync('npx prisma migrate deploy', { stdio: 'ignore', env: process.env });
+}
