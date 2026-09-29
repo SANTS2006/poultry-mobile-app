@@ -4,7 +4,7 @@ import { PasswordService } from './password.service';
 import { generateRecoveryCode, normalizeRecoveryCode, randomToken, safeEqual, sha256 } from './tokens';
 import { base32Decode, base32Encode, hotp, verifyTotp } from './totp';
 import { passwordProblems } from '../../auth/password-policy';
-import { scrub } from '../../audit/audit.service';
+import { AuditService, scrub, stableStringify } from '../../audit/audit.service';
 
 describe('TOTP (RFC 6238 / RFC 4226)', () => {
   const secret = Buffer.from('12345678901234567890'); // RFC test seed
@@ -102,5 +102,18 @@ describe('audit scrubbing', () => {
     const out = scrub({ email: 'a@b.c', password: 'x', nested: { refreshToken: 'y', ok: 1, list: [{ secret: 'z', n: 2 }] } });
     expect(JSON.stringify(out)).not.toMatch(/"x"|"y"|"z"/);
     expect(out).toMatchObject({ email: 'a@b.c', nested: { ok: 1 } });
+  });
+});
+
+describe('audit hash canonicalisation', () => {
+  it('does not depend on object key order (PostgreSQL JSONB reorders keys)', () => {
+    const at = new Date('2026-01-01T00:00:00Z');
+    const a = AuditService.computeHash(null, { action: 'x', after: { production: 1, sales: 2, expenses: 3, sourceSha256: 'z', nested: { b: 1, a: 2 } } }, at);
+    const b = AuditService.computeHash(null, { action: 'x', after: { sales: 2, expenses: 3, nested: { a: 2, b: 1 }, production: 1, sourceSha256: 'z' } }, at);
+    expect(a).toBe(b);
+    expect(AuditService.computeHash(null, { action: 'x', after: { production: 2 } }, at)).not.toBe(AuditService.computeHash(null, { action: 'x', after: { production: 1 } }, at));
+  });
+  it('stableStringify sorts keys and treats undefined like an absent key', () => {
+    expect(stableStringify({ b: 1, a: [{ d: 1, c: undefined }] })).toBe('{"a":[{"d":1}],"b":1}');
   });
 });

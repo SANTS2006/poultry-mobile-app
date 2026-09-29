@@ -76,10 +76,13 @@ describe('Database constraints (e2e)', () => {
   });
 
   it('allows a single open price per unit and requires valid periods', async () => {
+    // Own product/unit so this test is independent of any imported real prices.
+    const product = await prisma.product.create({ data: { code: `PRICE_TEST_${Date.now()}`, name: 'Price test' } });
+    const unit = await prisma.productUnit.create({ data: { productId: product.id, code: 'BOX', name: 'Box', eggsPerUnit: 10 } });
     const d = (s: string) => new Date(s);
-    await prisma.price.create({ data: { productUnitId: ids.unit!, amount: new Prisma.Decimal('1550'), effectiveFrom: d('2026-06-17T00:00:00Z') } });
-    await expect(prisma.price.create({ data: { productUnitId: ids.unit!, amount: new Prisma.Decimal('1600'), effectiveFrom: d('2026-07-01T00:00:00Z') } })).rejects.toThrow();
-    await expect(prisma.price.create({ data: { productUnitId: ids.unit!, amount: new Prisma.Decimal('10'), effectiveFrom: d('2026-07-01T00:00:00Z'), effectiveTo: d('2026-06-01T00:00:00Z') } })).rejects.toThrow();
+    await prisma.price.create({ data: { productUnitId: unit.id, amount: new Prisma.Decimal('1550'), effectiveFrom: d('2026-06-17T00:00:00Z') } });
+    await expect(prisma.price.create({ data: { productUnitId: unit.id, amount: new Prisma.Decimal('1600'), effectiveFrom: d('2026-07-01T00:00:00Z') } })).rejects.toThrow();
+    await expect(prisma.price.create({ data: { productUnitId: unit.id, amount: new Prisma.Decimal('10'), effectiveFrom: d('2026-07-01T00:00:00Z'), effectiveTo: d('2026-06-01T00:00:00Z') } })).rejects.toThrow();
   });
 
   it('requires a date for expenses unless flagged for review (migration lineage)', async () => {

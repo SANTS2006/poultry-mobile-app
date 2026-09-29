@@ -37,6 +37,14 @@ export function scrub(value: unknown, depth = 0): unknown {
   return value;
 }
 
+/** JSON.stringify with recursively sorted object keys (stable across JSONB round-trips). */
+export function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map((v) => stableStringify(v ?? null)).join(',')}]`;
+  const o = value as Record<string, unknown>;
+  return `{${Object.keys(o).sort().filter((k) => o[k] !== undefined).map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`).join(',')}}`;
+}
+
 /**
  * Append-only audit trail. Each row carries hash = SHA-256(prevHash | canonical row content), forming a chain that
  * makes silent edits or deletions detectable even for someone with database access (verified by `verifyChain`).
@@ -53,7 +61,7 @@ export class AuditService {
 
   private async write(tx: Tx, e: AuditEntry): Promise<void> {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(748201)`; // serialise chain appends
-    const last = await tx.auditLog.findFirst({ orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { hash: true } });
+    const last = await tx.auditLog.findFirst({ orderBy: { seq: 'desc' }, select: { hash: true } });
     const createdAt = new Date();
     const data = {
       userId: e.userId ?? null,
@@ -83,8 +91,9 @@ export class AuditService {
   }
 
   static computeHash(prevHash: string | null, d: Record<string, unknown>, createdAt: Date): string {
-    const canonical = JSON.stringify([
-      prevHash, d.userId, d.userName, d.action, d.entityType, d.entityId, d.before, d.after, d.reason, d.ip,
+    // Canonical form: PostgreSQL JSONB does not preserve object key order, so keys are sorted before hashing.
+    const canonical = stableStringify([
+      prevHash, d.userId, d.userName, d.action, d.entityType, d.entityId, d.before ?? null, d.after ?? null, d.reason, d.ip,
       d.deviceInfo, d.requestId, createdAt.toISOString(),
     ]);
     return createHash('sha256').update(canonical).digest('hex');
@@ -92,7 +101,7 @@ export class AuditService {
 
   /** Recomputes the chain in order; returns the id of the first inconsistent row or null when intact. */
   async verifyChain(limit = 10_000): Promise<string | null> {
-    const rows = await this.prisma.auditLog.findMany({ orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: limit });
+    const rows = await this.prisma.auditLog.findMany({ orderBy: { seq: 'asc' }, take: limit });
     let prev: string | null = null;
     for (const r of rows) {
       const expected = AuditService.computeHash(

@@ -640,6 +640,7 @@ model NotificationDevice {
 // Append-only: UPDATE/DELETE are blocked by trigger (constraints migration).
 model AuditLog {
   id         String   @id @default(uuid()) @db.Uuid
+  seq        BigInt   @unique @default(autoincrement()) // insertion order (chain order); timestamps can tie
   userId     String?  @db.Uuid
   userName   String?
   action     String

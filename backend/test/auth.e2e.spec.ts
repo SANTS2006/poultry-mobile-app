@@ -601,7 +601,7 @@ describe('Authentication, sessions, MFA, RBAC (e2e, real PostgreSQL)', () => {
       await signIn(app, u.email);
       const rows = await prisma.auditLog.findMany({ where: { userId: u.id } });
       expect(rows.map((r) => r.action)).toEqual(expect.arrayContaining(['auth.login.failed', 'auth.login.success']));
-      expect(JSON.stringify(rows)).not.toContain(PASSWORD);
+      expect(JSON.stringify(rows, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))).not.toContain(PASSWORD);
       expect(rows.every((r) => r.hash && r.requestId && r.ip)).toBe(true);
       expect(await app.get(AuditService).verifyChain()).toBeNull();
     });

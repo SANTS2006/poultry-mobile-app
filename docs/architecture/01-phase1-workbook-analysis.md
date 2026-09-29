@@ -67,7 +67,7 @@ Excel is currently doing five jobs at once:
 | I1 | Production typed twice and disagreeing | 21 Jun: Daily Egg Report 2,065 eggs vs Sheet1 3,145 (diff 1,080 = 3 cartons; Sheet1 says 8 cartons, coop sheet implies 5). All other 35 dates agree. Totals 95,423 vs 96,503 | Use Daily Egg Report (per-shift detail); flag 21 Jun for review |
 | I2 | Sales recorded twice with different values | 17 Jun: Sheet1 4 cartons = 6,200; Sheet2 4 cartons + 6 crates = 6,750. 18–21 Jun: Sheet1 1550/carton vs Sheet2 1500/carton (7,750 vs 7,500 etc.) | Flag; do not pick silently. Sheet2 has only 5 days |
 | I3 | Sold quantity text cell | Sheet1 `G23` = "15 + 6 Crates" (J23 hand-formula `=(15*1550)+775`) | Parse to 15 cartons + 6 crates, flag |
-| I4 | Sales vs production gap | 202 cartons sold (72,720 eggs) vs 95,423 produced; no stock, damage or usage recorded → ~22,700 eggs unaccounted | Cannot invent; needs opening stock/adjustment decision (Q3) |
+| I4 | Sales vs production gap | 78,300 eggs sold (incl. `15 + 6 Crates` on 4 Jul) vs 95,423 produced → **17,123 eggs unaccounted for**; and running stock would have been negative by up to **7,751 eggs (4 Jul)** — so an opening stock of at least that size must have existed but is not in the workbook. No stock, damage or usage is recorded. *(Corrected in Phase 5: the earlier figure of 17,123 omitted the text-typed sale.)* | Cannot invent; opening stock must be supplied/confirmed (Q3) |
 | I5 | Cash formulas inconsistent | `AC5=J-AA`; `AC14=J-AA`; `AC15=AC14-AA15+J15`; `AC20=AC18+Z20-AA20` (adds a *Misc expense* as income); `AC24` hard-coded 7020; `AB` column mixes cumulative sales and cash | Do not migrate cash figures; recompute from transactions; report the differences |
 | I6 | Hard-coded totals overriding formulas | `AA25=840`, `AA31=2300`, `AA36=0`, `AA40=1530`; `AA20` omits the Misc amount `Z20` | Recompute expense totals from line items; flag mismatches |
 | I7 | Multiple items in one cell | e.g. `O15` five people, `Y37` six items, `U20` "Feeders (300*13), Bike Tire (500)"; amounts as formulas `=3500+6350+…` | Split where parseable; else import as one flagged record with original text |
@@ -86,7 +86,7 @@ Defaults in brackets are implemented as configurable settings so work is not blo
 
 1. **Currency**: Le (old) vs NLe? [NLe display, configurable]
 2. **Price**: is the carton price 1550 (Sheet1) or 1500 (Sheet2)? Crate = price/12 (129.17) or a fixed 125? Who may change prices? [prices table with effective dates; only Owner/Super Admin]
-3. **Stock**: what was the opening egg stock on 17 Jun? Where did the ~22,700 unsold eggs go (stock, breakage, personal use, sold in crates/singles unrecorded)? [Opening stock = 0 with a flagged adjustment for review]
+3. **Stock**: what was the opening egg stock on 17 Jun? Where did the 17,123 eggs go (and what was the opening stock — at least 7,751 eggs) (stock, breakage, personal use, sold in crates/singles unrecorded)? [Opening stock = 0 with a flagged adjustment for review]
 4. **"CEO/Visitors"** column: eggs given away/consumed? [Internal-usage transaction type]
 5. **Credit sales** and named customers: does the farm sell on credit? Are there regular customers/wholesalers? [Walk-in default; credit enabled but off]
 6. **"Misc" payments to individuals** (Abu Kamara, Baba, Gen MBS, Marie…): wages, advances, loans repaid, or personal? Should there be an Employees/advances category? [Import as-is, flagged]
