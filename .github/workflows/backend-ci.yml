@@ -1,9 +1,9 @@
 name: backend-ci
 on:
   push:
-    paths: ['backend/**', '.github/workflows/backend-ci.yml']
+    paths: ['backend/**', 'mobile/**', 'migration/source/**', '.github/workflows/backend-ci.yml']
   pull_request:
-    paths: ['backend/**', '.github/workflows/backend-ci.yml']
+    paths: ['backend/**', 'mobile/**', 'migration/source/**', '.github/workflows/backend-ci.yml']
 
 permissions:
   contents: read
@@ -45,8 +45,12 @@ jobs:
         run: npm run typecheck
       - name: Lint
         run: npm run lint
+      - name: Mobile sync code — strict TypeScript
+        run: npm run typecheck:mobile
       - name: Unit tests
         run: npm test
+      - name: Mobile sync engine tests (real SQLite via node:sqlite)
+        run: NODE_OPTIONS="--experimental-sqlite --no-warnings" npm run test:mobile
       - name: Integration/security tests (real PostgreSQL)
         run: npm run test:e2e
       - name: Dependency audit (fail on high/critical)

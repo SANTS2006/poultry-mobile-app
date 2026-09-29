@@ -679,7 +679,9 @@ model SyncOperation {
   entityType String
   status     SyncStatus
   result     Json?
+  attempts   Int        @default(1)
   createdAt  DateTime   @default(now()) @db.Timestamptz
+  updatedAt  DateTime   @default(now()) @updatedAt @db.Timestamptz
 
   @@index([userId, createdAt])
 }

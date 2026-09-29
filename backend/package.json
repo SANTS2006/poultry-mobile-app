@@ -18,7 +18,9 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "db:seed": "ts-node prisma/seed.ts",
     "bootstrap:admin": "ts-node scripts/bootstrap-admin.ts",
-    "import:excel": "ts-node scripts/import-excel.ts"
+    "import:excel": "ts-node scripts/import-excel.ts",
+    "test:mobile": "jest --config jest.mobile.config.js",
+    "typecheck:mobile": "tsc --noEmit -p ../mobile/tsconfig.sync.json"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
