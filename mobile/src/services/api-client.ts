@@ -1,7 +1,7 @@
 import { AuthRequiredError, HttpError, NetworkError } from '../sync/types';
-import { TokenManager } from './token-manager';
+import { TokenManager, type FetchLike } from './token-manager';
 
-type FetchLike = ConstructorParameters<typeof TokenManager>[2];
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /** JSON API client: bearer auth, one automatic refresh-and-retry on 401, timeouts, and errors the sync engine understands. */
 export class ApiClient {
@@ -10,7 +10,7 @@ export class ApiClient {
     private readonly deviceHeaders: Record<string, string> = {}, private readonly timeoutMs = 20_000,
   ) {}
 
-  async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+  async request<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
     let token = await this.tokens.getAccessToken(); // may throw AuthRequiredError / NetworkError
     for (let attempt = 0; attempt < 2; attempt++) {
       const res = await this.send(method, path, token, body);
@@ -18,6 +18,20 @@ export class ApiClient {
       if (res.status === 401) { await this.tokens.clear(); throw new AuthRequiredError(); }
       if (!res.ok) throw new HttpError(res.status, await res.json().catch(() => null));
       return (res.status === 204 ? null : await res.json()) as T;
+    }
+    throw new AuthRequiredError();
+  }
+
+  /** Authenticated binary download (report exports). Same auth, refresh and error handling as JSON requests. */
+  async download(path: string): Promise<{ bytes: ArrayBuffer; contentType: string | null }> {
+    let token = await this.tokens.getAccessToken();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await this.send('GET', path, token);
+      if (res.status === 401 && attempt === 0) { token = await this.tokens.refresh(); continue; }
+      if (res.status === 401) { await this.tokens.clear(); throw new AuthRequiredError(); }
+      if (!res.ok) throw new HttpError(res.status, await res.json().catch(() => null));
+      if (!res.arrayBuffer) throw new Error('This platform cannot download files.');
+      return { bytes: await res.arrayBuffer(), contentType: (res as { headers?: { get(n: string): string | null } }).headers?.get('content-type') ?? null };
     }
     throw new AuthRequiredError();
   }

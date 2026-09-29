@@ -15,7 +15,7 @@ export class MemorySecureStore implements SecureStore {
 }
 
 export interface SessionTokens { accessToken: string; refreshToken: string; expiresIn: number }
-type FetchLike = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+export type FetchLike = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown>; arrayBuffer?(): Promise<ArrayBuffer> }>;
 
 const K = { access: 'auth.access', refresh: 'auth.refresh', expires: 'auth.expiresAt' } as const;
 const REFRESH_MARGIN_MS = 30_000;
