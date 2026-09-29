@@ -1,0 +1,25 @@
+name: mobile-eas
+# Manual: builds the mobile app in Expo's cloud. Requires the EXPO_TOKEN secret and a configured EAS project (see docs/mobile/release-eas.md).
+on:
+  workflow_dispatch:
+    inputs:
+      profile: { description: 'EAS build profile', type: choice, options: [preview, production], default: preview }
+      platform: { description: 'Platform', type: choice, options: [android, ios, all], default: android }
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.profile }}
+    defaults: { run: { working-directory: mobile } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: mobile/package-lock.json }
+      - run: npm ci
+      - run: npx tsc --noEmit && npx eslint . && NODE_OPTIONS="--experimental-sqlite --no-warnings" npx jest
+      - uses: expo/expo-github-action@v8
+        with: { eas-version: latest, token: '${{ secrets.EXPO_TOKEN }}' }
+      - run: eas build --non-interactive --no-wait --profile ${{ inputs.profile }} --platform ${{ inputs.platform }}
