@@ -2,6 +2,7 @@ import {
   BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, UnauthorizedException,
 } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
+import { DomainEvents } from '../domain/events.service';
 import { PasswordService } from '../common/crypto/password.service';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -41,6 +42,7 @@ export class AuthService {
     private readonly emailTokens: EmailTokenService,
     private readonly audit: AuditService,
     private readonly mail: MailService,
+    private readonly events: DomainEvents,
   ) {}
 
   // ───────────── login ─────────────
@@ -123,6 +125,7 @@ export class AuthService {
     await this.audit.record({ action: 'auth.login.success', userId, entityType: 'user', entityId: userId, ip: meta.ip, deviceInfo: meta.deviceName, requestId: meta.requestId, after: { via } });
     if (newDevice) {
       await this.audit.record({ action: 'auth.login.new_device', userId, entityType: 'user', entityId: userId, ip: meta.ip, deviceInfo: `${meta.deviceName ?? ''} ${meta.platform ?? ''}`.trim(), requestId: meta.requestId });
+      this.events.emit({ name: 'security.event', entityId: userId, data: { kind: 'new_device', device: (meta.deviceName ?? 'a new device').slice(0, 60) } });
     }
     return {
       status: 'authenticated',
@@ -143,6 +146,8 @@ export class AuthService {
         const minutes = Math.min(LOCK_CAP_MINUTES, 2 ** (u.failedAttempts - MAX_FAILED_ATTEMPTS));
         await this.prisma.user.update({ where: { id: userId }, data: { lockedUntil: new Date(Date.now() + minutes * 60_000) } });
         await this.audit.record({ action: 'auth.account.locked', userId, entityType: 'user', entityId: userId, ip: meta.ip, requestId: meta.requestId, after: { minutes, failedAttempts: u.failedAttempts } });
+        this.events.emit({ name: 'security.event', entityId: userId, data: { kind: 'account_locked', minutes } });
+        this.events.emit({ name: 'admin.event', entityId: userId, data: { kind: 'account_locked' } });
       }
     }
     // The attempted email is only recorded for known accounts (avoid storing arbitrary attacker-supplied strings).
@@ -233,6 +238,7 @@ export class AuthService {
       await this.audit.record({ action: 'auth.password.reset', userId, entityType: 'user', entityId: userId, ip: meta.ip, requestId: meta.requestId }, tx);
     });
     await this.sessions.revokeAllForUser(userId, 'password_reset'); // a reset signs out every device
+    this.events.emit({ name: 'security.event', entityId: userId, data: { kind: 'password_changed' } });
     await this.mail.send({ to: user.email, subject: 'Your Makarifor password was changed', text: 'Your password was just reset. If this was not you, contact an administrator immediately.' });
   }
 
@@ -250,6 +256,7 @@ export class AuthService {
       await this.audit.record({ action: 'auth.password.changed', userId: user.id, userName: user.fullName, entityType: 'user', entityId: user.id, ip: meta.ip, requestId: meta.requestId }, tx);
     });
     await this.sessions.revokeAllForUser(user.id, 'password_changed', user.familyId); // keep only this device signed in
+    this.events.emit({ name: 'security.event', entityId: user.id, data: { kind: 'password_changed' } });
     await this.mail.send({ to: user.email, subject: 'Your Makarifor password was changed', text: 'Your password was just changed. If this was not you, contact an administrator immediately.' });
   }
 

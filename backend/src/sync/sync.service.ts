@@ -4,6 +4,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate, ValidationError } from 'class-validator';
 import { PinoLogger } from 'nestjs-pino';
 import { AuditService } from '../audit/audit.service';
+import { DomainEvents } from '../domain/events.service';
 import type { AuthUser, RequestMeta } from '../auth/auth.types';
 import { CustomersService, CreateCustomerDto } from '../customers/customers.service';
 import { CreateExpenseDto, ExpensesService } from '../expenses/expenses.service';
@@ -41,7 +42,7 @@ const STATUS_TO_DB: Record<OperationResult['status'], SyncStatus | null> = {
 @Injectable()
 export class SyncService {
   constructor(
-    private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly logger: PinoLogger,
+    private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly logger: PinoLogger, private readonly events: DomainEvents,
     private readonly production: ProductionService, private readonly sales: SalesService, private readonly expenses: ExpensesService,
     private readonly customers: CustomersService, private readonly payments: PaymentsService,
   ) {
@@ -56,6 +57,10 @@ export class SyncService {
       action: 'sync.push', userId: user.id, userName: user.fullName, entityType: 'device', entityId: deviceId,
       after: { operations: ops.length, accepted: count('accepted'), duplicate: count('duplicate'), rejected: count('rejected'), conflict: count('conflict'), error: count('error') },
       ip: meta.ip, requestId: meta.requestId,
+    });
+    this.events.emit({
+      name: 'sync.completed', entityId: user.id, actorId: user.id,
+      data: { accepted: count('accepted'), duplicate: count('duplicate'), rejected: count('rejected'), conflict: count('conflict'), error: count('error') },
     });
     return results;
   }

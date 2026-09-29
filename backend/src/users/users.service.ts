@@ -75,6 +75,7 @@ export class UsersService {
       return { user, token };
     });
     await this.emailTokens.sendLink(user.email, 'INVITE', token);
+    this.events.emit({ name: 'admin.event', entityId: user.id, actorId: actor.id, data: { kind: 'user_created' } });
     return this.get(user.id);
   }
 
@@ -103,6 +104,8 @@ export class UsersService {
       }, tx);
     });
     this.events.emit({ name: 'access.changed', entityId: id, actorId: actor.id });
+    this.events.emit({ name: 'security.event', entityId: id, actorId: actor.id, data: { kind: 'role_changed' } });
+    this.events.emit({ name: 'admin.event', entityId: id, actorId: actor.id, data: { kind: 'role_changed' } });
     return this.get(id);
   }
 
@@ -120,6 +123,8 @@ export class UsersService {
     });
     await this.sessions.revokeAllForUser(id, 'account_disabled');
     this.events.emit({ name: 'user.status_changed', entityId: id, actorId: actor.id, data: { status: 'DISABLED' } });
+    this.events.emit({ name: 'security.event', entityId: id, actorId: actor.id, data: { kind: 'account_disabled' } });
+    this.events.emit({ name: 'admin.event', entityId: id, actorId: actor.id, data: { kind: 'user_disabled' } });
     return this.get(id);
   }
 

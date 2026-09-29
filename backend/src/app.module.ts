@@ -24,6 +24,7 @@ import { ProductionModule } from './production/production.module';
 import { SalesModule } from './sales/sales.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { SyncModule } from './sync/sync.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
@@ -59,6 +60,7 @@ import { HealthModule } from './health/health.module';
     ExpensesModule,
     DashboardModule,
     SyncModule,
+    NotificationsModule,
     RealtimeModule,
     HealthModule,
   ],

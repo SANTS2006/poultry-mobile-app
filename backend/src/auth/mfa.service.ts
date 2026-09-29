@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import * as QRCode from 'qrcode';
 import { AuditService } from '../audit/audit.service';
+import { DomainEvents } from '../domain/events.service';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { generateRecoveryCode, normalizeRecoveryCode, sha256 } from '../common/crypto/tokens';
 import { generateTotpSecret, otpauthUri, verifyTotp } from '../common/crypto/totp';
@@ -18,6 +19,7 @@ export class MfaService {
     private readonly enc: EncryptionService,
     private readonly audit: AuditService,
     private readonly sessions: SessionService,
+    private readonly events: DomainEvents,
   ) {}
 
   async beginEnrollment(userId: string, email: string): Promise<{ secret: string; otpauthUri: string; qrCodeDataUrl: string }> {
@@ -47,6 +49,7 @@ export class MfaService {
       await this.audit.record({ action: 'auth.mfa.enabled', userId, entityType: 'user', entityId: userId, ip: meta.ip, requestId: meta.requestId }, tx);
       return fresh;
     });
+    this.events.emit({ name: 'security.event', entityId: userId, data: { kind: 'mfa_enabled' } });
     return codes;
   }
 
@@ -113,6 +116,7 @@ export class MfaService {
       }, tx);
     });
     await this.sessions.revokeAllForUser(userId, action, keepFamilyId);
+    this.events.emit({ name: 'security.event', entityId: userId, actorId: admin?.actor.id, data: { kind: admin ? 'mfa_reset' : 'mfa_disabled' } });
   }
 
   private async replaceRecoveryCodes(userId: string, tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0]): Promise<string[]> {

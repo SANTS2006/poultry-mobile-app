@@ -55,6 +55,7 @@ export class SessionService {
           action: 'auth.refresh.reuse_detected', userId: session.userId, entityType: 'session', entityId: session.familyId,
           ip: meta.ip, deviceInfo: meta.deviceName, requestId: meta.requestId,
         });
+        this.events.emit({ name: 'security.event', entityId: session.userId, data: { kind: 'refresh_reuse' } });
       }
       throw new UnauthorizedException(INVALID);
     }

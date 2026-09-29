@@ -100,6 +100,12 @@ export const DEFAULT_SETTINGS: Record<string, unknown> = {
   'inventory.lowStockThresholdEggs': 1000,
   'sales.creditEnabled': false,
   'expenses.approvalThreshold': null,
-  'notifications.dailySummaryTime': '18:00',
-  'notifications.productionReminderTime': '10:00',
+  'notifications.dailySummaryEnabled': true,
+  'notifications.dailySummaryTime': '18:00', // business time zone
+  'notifications.dailySummaryEmail': false, // e-mail copy (contains figures): opt-in, needs SMTP
+  'notifications.productionReminders': [
+    { shift: 'MORNING', time: '10:00' }, { shift: 'AFTERNOON', time: '15:00' }, { shift: 'EVENING', time: '19:00' },
+  ],
+  'notifications.largeSaleThreshold': null, // decimal string; null = no "large sale" alert
+  'notifications.monthlyExpenseThreshold': null, // decimal string; null = no threshold alert
 };

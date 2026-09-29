@@ -1,6 +1,6 @@
 import { execSync } from 'child_process';
 import { Controller, Get, INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { Test, TestingModuleBuilder } from '@nestjs/testing';
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import request from 'supertest';
@@ -23,8 +23,10 @@ export class ProbeController {
   @RequirePermissions('production.create', 'sales.create') @Get('both') both() { return { ok: true }; }
 }
 
-export async function createApp(): Promise<{ app: INestApplication; mail: MailService; prisma: PrismaClient }> {
-  const mod = await Test.createTestingModule({ imports: [AppModule], controllers: [ProbeController] }).compile();
+export async function createApp(customise?: (b: TestingModuleBuilder) => TestingModuleBuilder): Promise<{ app: INestApplication; mail: MailService; prisma: PrismaClient }> {
+  let builder = Test.createTestingModule({ imports: [AppModule], controllers: [ProbeController] });
+  if (customise) builder = customise(builder);
+  const mod = await builder.compile();
   const app = mod.createNestApplication({ bufferLogs: true });
   configureApp(app);
   await app.init();

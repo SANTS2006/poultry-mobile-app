@@ -141,7 +141,7 @@ export class SalesService {
     }
     this.events.emit({ name: 'sale.created', entityId: sale.id, farmId, actorId: user.id, data: { paymentStatus: sale.paymentStatus, eggs } });
     this.events.emit({ name: 'inventory.updated', entityId: farmId, farmId, actorId: user.id, data: { reason: 'sale' } });
-    if (sale.paidAmount.gt(0)) this.events.emit({ name: 'payment.created', entityId: sale.payments[0].id, farmId, actorId: user.id, data: { saleId: sale.id } });
+    if (sale.paidAmount.gt(0)) this.events.emit({ name: 'payment.created', entityId: sale.payments[0].id, farmId, actorId: user.id, data: { saleId: sale.id, initial: true } });
     return { sale: presentSale(sale), created: true };
   }
 

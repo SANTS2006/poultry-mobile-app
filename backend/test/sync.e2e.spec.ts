@@ -92,7 +92,7 @@ describe('Offline sync (e2e): push semantics, idempotency, conflicts and the rea
       expect(results(res)).toEqual(['duplicate', 'duplicate', 'duplicate', 'duplicate']);
       expect(res.body.results.map((r: { entityId: string }) => r.entityId)).toEqual(entityIds);
       expect({ stock: await stock(), sales: await prisma.sale.count(), prod: await prisma.productionRecord.count(), exp: await prisma.expense.count(), cust: await prisma.customer.count() }).toEqual(before);
-      expect(events).toEqual([]); // a duplicate publishes nothing
+      expect(events.filter((e) => !['sync.completed', 'notification.created'].includes(e.name))).toEqual([]); // a duplicate publishes no business events
     });
 
     it('refuses an operation id that belongs to another user', async () => {

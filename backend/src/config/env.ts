@@ -23,7 +23,8 @@ const schema = z
     EMAIL_USER: z.string().default(''),
     EMAIL_PASSWORD: z.string().default(''),
     EMAIL_FROM: z.string().default(''),
-    PUSH_NOTIFICATION_CONFIG: z.string().default(''),
+    PUSH_NOTIFICATION_CONFIG: z.string().default(''), // optional Expo access token (needed if Expo "enhanced push security" is on)
+    PUSH_PROVIDER: z.enum(['expo', 'none']).optional(), // default: expo in staging/production, none elsewhere (never push from dev/test by accident)
     THROTTLE_OFF: z.enum(['0', '1']).optional(),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   })

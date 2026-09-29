@@ -24,7 +24,9 @@ describe('Core operations: production, inventory, sales, customers, payments, ex
   const patch = (path: string, who: keyof typeof tok, body: object) => api(app).patch(`/v1${path}`).set(bearer(tok[who])).send(body);
   const balance = async () => (await prisma.inventoryBalance.findFirst({ where: { farmId } }))?.quantityEggs ?? 0;
   const ledgerSum = async () => Number((await prisma.$queryRaw<{ s: bigint }[]>`SELECT COALESCE(SUM("quantityEggs"),0)::bigint s FROM "InventoryTransaction" WHERE "farmId" = ${farmId}::uuid`)[0].s);
-  const names = () => events.map((e) => e.name);
+  // notification.created / sync.completed are follow-on events raised asynchronously by other modules; the guarantees below concern business events
+  const business = () => events.filter((e) => !['notification.created', 'sync.completed'].includes(e.name));
+  const names = () => business().map((e) => e.name);
 
   beforeAll(async () => {
     process.env.THROTTLE_OFF = '1';
@@ -108,7 +110,7 @@ describe('Core operations: production, inventory, sales, customers, payments, ex
       expect(replay.body.id).toBe(first.body.id);
       expect(await prisma.productionRecord.count({ where: { clientId } })).toBe(1);
       expect(await balance()).toBe(570 + 300);
-      expect(events).toEqual([]); // a replay publishes nothing
+      expect(business()).toEqual([]); // a replay publishes nothing
       await post('/production', 'manager', body).expect(409);
       ids.prod2 = first.body.id;
     });
@@ -323,7 +325,7 @@ describe('Core operations: production, inventory, sales, customers, payments, ex
       const r = await post('/sales', 'sales', { items: [{ unit: 'CARTON', quantity: 5000 }] }).expect(409);
       expect(r.body.message).toMatch(/Insufficient stock/);
       expect([await prisma.sale.count(), await prisma.payment.count(), await ledgerSum(), await balance(), await prisma.auditLog.count({ where: { action: 'sale.created' } })]).toEqual([sales, pays, ledger, stock, audits]);
-      expect(events).toEqual([]);
+      expect(business()).toEqual([]);
     });
 
     it('cannot oversell under concurrency: two simultaneous sales for the last eggs → exactly one succeeds', async () => {
@@ -385,7 +387,7 @@ describe('Core operations: production, inventory, sales, customers, payments, ex
       expect(replay.body.id).toBe(first.body.id);
       expect(await prisma.sale.count({ where: { clientId } })).toBe(1);
       expect(await balance()).toBe(stock);
-      expect(events).toEqual([]);
+      expect(business()).toEqual([]);
       await post('/sales', 'manager', body).expect(409);
 
       await post('/prices', 'admin', { unit: 'CARTON', amount: '1600', reason: 'feed cost increase' }).expect(201);

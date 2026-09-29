@@ -13,7 +13,11 @@ export type DomainEventName =
   | 'system.alert'
   // internal (never sent to clients as-is): drive socket disconnects / permission re-checks
   | 'session.revoked'
-  | 'access.changed';
+  | 'access.changed'
+  // inputs for the notification rules (never sent to clients as-is)
+  | 'sync.completed'
+  | 'security.event'
+  | 'admin.event';
 
 export interface DomainEvent {
   name: DomainEventName;
