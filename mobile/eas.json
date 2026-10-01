@@ -1,29 +1,56 @@
 {
-  "cli": { "version": ">= 16.0.0", "appVersionSource": "remote" },
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
   "build": {
     "development": {
       "developmentClient": true,
       "distribution": "internal",
       "channel": "development",
-      "env": { "EXPO_PUBLIC_API_URL": "http://10.0.2.2:3000", "EXPO_PUBLIC_APP_ENV": "development" }
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://10.0.2.2:3000",
+        "EXPO_PUBLIC_APP_ENV": "development"
+      }
     },
     "preview": {
       "distribution": "internal",
       "channel": "staging",
-      "android": { "buildType": "apk" },
-      "env": { "EXPO_PUBLIC_API_URL": "https://staging-api.example.invalid", "EXPO_PUBLIC_APP_ENV": "staging" }
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://staging-api.example.invalid",
+        "EXPO_PUBLIC_APP_ENV": "staging"
+      }
     },
     "production": {
       "channel": "production",
       "autoIncrement": true,
-      "android": { "buildType": "app-bundle" },
-      "env": { "EXPO_PUBLIC_API_URL": "https://api.example.invalid", "EXPO_PUBLIC_APP_ENV": "production" }
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api.example.invalid",
+        "EXPO_PUBLIC_APP_ENV": "production"
+      }
+    },
+    "device": {
+      "extends": "development",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://CHANGE-ME-LAPTOP-LAN-IP:3000",
+        "EXPO_PUBLIC_APP_ENV": "development"
+      }
     }
   },
   "submit": {
     "production": {
-      "android": { "track": "internal" },
-      "ios": { "ascAppId": "REPLACE_WITH_APP_STORE_CONNECT_APP_ID" }
+      "android": {
+        "track": "internal"
+      },
+      "ios": {
+        "ascAppId": "REPLACE_WITH_APP_STORE_CONNECT_APP_ID"
+      }
     }
   }
 }
