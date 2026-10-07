@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState, type ReactNode, type Ref } from 'react';
 import {
-  ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text as RNText, TextInput, View,
+  ActivityIndicator, Animated, Image, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text as RNText, TextInput, View,
   type StyleProp, type TextInputProps, type TextStyle, type ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -82,14 +82,14 @@ export function SectionTitle({ children }: { children: ReactNode }) { return <Te
 
 /* ───────────────────────── Buttons ───────────────────────── */
 
-export function Button({ title, onPress, variant = 'primary', busy, disabled, small, testID, icon }: {
-  title: string; onPress: () => void; variant?: 'primary' | 'secondary' | 'danger' | 'ghost'; busy?: boolean; disabled?: boolean; small?: boolean; testID?: string; icon?: IconName;
+export function Button({ title, onPress, variant = 'primary', busy, disabled, small, testID, icon, pill }: {
+  title: string; onPress: () => void; variant?: 'primary' | 'secondary' | 'danger' | 'ghost'; busy?: boolean; disabled?: boolean; small?: boolean; testID?: string; icon?: IconName; pill?: boolean;
 }) {
   const c = useColors();
   const [scale] = useState(() => new Animated.Value(1));
   const spring = (to: number) => Animated.spring(scale, { toValue: to, useNativeDriver: true, speed: 40, bounciness: 0 }).start();
   const bg = variant === 'primary' ? c.primary : variant === 'danger' ? c.danger : variant === 'secondary' ? c.primarySoft : 'transparent';
-  const fg = variant === 'primary' ? c.onPrimary : variant === 'danger' ? '#FFFFFF' : variant === 'secondary' ? c.onPrimarySoft : c.primary;
+  const fg = variant === 'primary' ? c.onPrimary : variant === 'danger' ? c.onDanger : variant === 'secondary' ? c.onPrimarySoft : c.primary;
   const off = disabled || busy;
   return (
     <Pressable
@@ -97,7 +97,7 @@ export function Button({ title, onPress, variant = 'primary', busy, disabled, sm
       onPressIn={() => spring(0.97)} onPressOut={() => spring(1)} android_ripple={{ color: `${fg}22` }}
     >
       <Animated.View style={{
-        transform: [{ scale }], minHeight: small ? 44 : TOUCH + 4, paddingHorizontal: small ? space.lg : space.xl, borderRadius: radius.md, backgroundColor: bg,
+        transform: [{ scale }], minHeight: small ? 44 : TOUCH + 4, paddingHorizontal: small ? space.lg : space.xl, borderRadius: pill ? radius.pill : radius.md, backgroundColor: bg,
         opacity: off ? 0.5 : 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: space.sm,
       }}>
         {busy ? <ActivityIndicator color={fg} /> : icon ? <Icon name={icon} size="sm" color={fg} /> : null}
@@ -113,7 +113,7 @@ export function Button({ title, onPress, variant = 'primary', busy, disabled, sm
  * Labelled input. The label is always visible (never only a placeholder), the error appears directly under the field with an icon
  * (not colour alone), password fields get a show/hide control, and focus is clearly outlined.
  */
-export function Field({ label, error, hint, icon, inputRef, ...input }: TextInputProps & { label: string; error?: string | null; hint?: string; icon?: IconName; inputRef?: Ref<TextInput> }) {
+export function Field({ label, error, hint, icon, inputRef, pill, ...input }: TextInputProps & { label: string; error?: string | null; hint?: string; icon?: IconName; inputRef?: Ref<TextInput>; pill?: boolean }) {
   const c = useColors();
   const [focused, setFocused] = useState(false);
   const [reveal, setReveal] = useState(false);
@@ -121,11 +121,11 @@ export function Field({ label, error, hint, icon, inputRef, ...input }: TextInpu
   const border = error ? c.danger : focused ? c.primary : c.borderStrong;
   return (
     <View style={{ gap: space.xs }}>
-      <Text variant="label" muted>{label}</Text>
-      <View style={{
-        minHeight: TOUCH + 4, flexDirection: 'row', alignItems: 'center', borderWidth: focused || error ? 2 : 1, borderColor: border, borderRadius: radius.md,
-        backgroundColor: c.input, paddingHorizontal: space.md, gap: space.sm,
-      }}>
+      <Text variant="label">{label}</Text>
+      <View style={[{
+        minHeight: TOUCH + 8, flexDirection: 'row', alignItems: 'center', borderWidth: focused || error ? 2 : 1, borderColor: border, borderRadius: pill ? radius.pill : radius.md,
+        backgroundColor: focused ? c.input : c.surface, paddingHorizontal: pill ? space.lg : space.md, gap: space.sm,
+      }, focused ? { shadowColor: c.primary, shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 } : null]}>
         {icon ? <Icon name={icon} size="sm" color={focused ? c.primary : c.muted} /> : null}
         <TextInput
           ref={inputRef} accessibilityLabel={label} placeholderTextColor={c.muted} cursorColor={c.primary} selectionColor={c.primary}
@@ -240,11 +240,16 @@ export function IconTile({ name, tone = 'primary' }: { name: IconName; tone?: 'p
   return <View style={{ width: 40, height: 40, borderRadius: radius.md - 2, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}><Icon name={name} size="md" color={fg} /></View>;
 }
 
-export function Avatar({ name, size = 44 }: { name: string; size?: number }) {
+export function Avatar({ name, size = 44, uri }: { name: string; size?: number; uri?: string | null }) {
   const c = useColors();
+  const [failedUri, setFailedUri] = useState<string | null>(null);
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join('') || '?';
+  const box = { width: size, height: size, borderRadius: size / 2, overflow: 'hidden' as const };
+  if (uri && failedUri !== uri) {
+    return <Image accessibilityIgnoresInvertColors accessibilityElementsHidden importantForAccessibility="no-hide-descendants" source={{ uri }} onError={() => setFailedUri(uri)} style={[box, { backgroundColor: c.accentSoft }]} />;
+  }
   return (
-    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' }}>
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[box, { backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' }]}>
       <RNText style={[typeScale.bodyStrong, { color: c.onAccent, fontSize: size * 0.38 }]}>{initials}</RNText>
     </View>
   );

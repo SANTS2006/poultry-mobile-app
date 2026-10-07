@@ -74,17 +74,23 @@ export async function unregisterPush(api: Endpoints): Promise<void> {
   } catch { /* offline or never registered: the server also drops tokens the push service reports as gone */ }
 }
 
+/** The record a notification is about, if it points at one the user can open. */
+export function relatedRoute(data: { entityType?: string | null; entityId?: string | null } | null | undefined): { path: string; label: string } | null {
+  if (!data?.entityType) return null;
+  switch (data.entityType) {
+    case 'sale': return data.entityId ? { path: `/sales/${data.entityId}`, label: 'Open the sale' } : { path: '/sales', label: 'Open sales' };
+    case 'production_record': return data.entityId ? { path: `/production/${data.entityId}`, label: 'Open the production record' } : { path: '/production', label: 'Open production' };
+    case 'expense': return { path: '/expenses', label: 'Open expenses' };
+    case 'sync': return { path: '/sync', label: 'Open sync' };
+    default: return null;
+  }
+}
+
 /**
- * Where a tapped notification should open. The push payload carries ids only (never amounts or names); the target screen loads
- * details through the authenticated API, so a stolen lock-screen banner reveals nothing.
+ * Where a tapped notification opens: its detail screen, which offers the related record. The push payload carries ids only (never amounts or
+ * names); the screen loads details through the authenticated API, so a stolen lock-screen banner reveals nothing.
  */
 export function routeForNotification(data: { notificationId?: string; entityType?: string | null; entityId?: string | null; type?: string } | null | undefined): string {
-  if (!data) return '/notifications';
-  switch (data.entityType) {
-    case 'sale': return data.entityId ? `/sales/${data.entityId}` : '/sales';
-    case 'production_record': return data.entityId ? `/production/${data.entityId}` : '/production';
-    case 'expense': return '/expenses';
-    case 'sync': return '/sync';
-    default: return '/notifications';
-  }
+  if (data?.notificationId) return `/notifications/${data.notificationId}`;
+  return relatedRoute(data)?.path ?? '/notifications';
 }

@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import type { InventoryTx } from '../../../api/types';
 import { formatDateTime, formatInt } from '../../../lib/format';
 import { useEndpoints } from '../../../state/app';
@@ -10,6 +11,7 @@ const LABEL: Record<string, string> = {
 
 export default function StockHistory() {
   const api = useEndpoints();
+  const router = useRouter();
   return (
     <PagedList<InventoryTx>
       queryKey={['inventory', 'history']} limit={30}
@@ -18,6 +20,7 @@ export default function StockHistory() {
       renderItem={(t) => (
         <ListRow
           title={`${LABEL[t.type] ?? t.type}: ${t.quantityEggs > 0 ? '+' : ''}${formatInt(t.quantityEggs)} eggs`} subtitle={`${formatDateTime(t.occurredAt)}${t.reason ? ` · ${t.reason}` : ''}`}
+          onPress={() => router.push(`/inventory/${t.id}` as never)}
           badge={t.needsReview ? <Badge tone="warn" label="Needs review" /> : undefined}
           icon={t.quantityEggs < 0 ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline'}
         />

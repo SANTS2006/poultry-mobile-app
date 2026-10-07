@@ -7,7 +7,7 @@ export const lightColors = {
   text: '#12201A', textSecondary: '#4F5F56', muted: '#5C6B62', border: '#E0E6E1', borderStrong: '#C5CFC7',
   primary: '#0B6B3A', onPrimary: '#FFFFFF', primarySoft: '#E3F2E9', onPrimarySoft: '#0A4F2B',
   accent: '#F2B33D', onAccent: '#2B1D00', accentSoft: '#FFF2D3', onAccentSoft: '#6B4600',
-  danger: '#B3261E', dangerSoft: '#FDECEA', ok: '#176B3D', okSoft: '#E1F4E8', warn: '#845400', warnSoft: '#FFF2D3', info: '#1C5BBF', infoSoft: '#E7EFFC',
+  danger: '#B3261E', onDanger: '#FFFFFF', dangerSoft: '#FDECEA', ok: '#176B3D', okSoft: '#E1F4E8', warn: '#845400', warnSoft: '#FFF2D3', info: '#1C5BBF', infoSoft: '#E7EFFC',
   overlay: 'rgba(10,20,15,0.45)', shadow: '#0A140F', skeleton: '#E7ECE8',
 };
 
@@ -16,7 +16,7 @@ export const darkColors: typeof lightColors = {
   text: '#ECF3EE', textSecondary: '#B4C4B9', muted: '#9AACA0', border: '#26352D', borderStrong: '#3A4D42',
   primary: '#4CC38A', onPrimary: '#04210F', primarySoft: '#173A2A', onPrimarySoft: '#BDEBD3',
   accent: '#F5C05A', onAccent: '#2B1D00', accentSoft: '#3A2D0F', onAccentSoft: '#F7D88E',
-  danger: '#FF8A80', dangerSoft: '#3A1B18', ok: '#6FD69C', okSoft: '#12301F', warn: '#F5C05A', warnSoft: '#3A2D0F', info: '#8DB8FF', infoSoft: '#15243D',
+  danger: '#FF8A80', onDanger: '#3A0A06', dangerSoft: '#3A1B18', ok: '#6FD69C', okSoft: '#12301F', warn: '#F5C05A', warnSoft: '#3A2D0F', info: '#8DB8FF', infoSoft: '#15243D',
   overlay: 'rgba(0,0,0,0.65)', shadow: '#000000', skeleton: '#1F2C25',
 };
 

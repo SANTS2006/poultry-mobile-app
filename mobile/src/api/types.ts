@@ -32,6 +32,7 @@ export interface Expense {
 }
 
 export interface InventorySnapshot { farmId: string; productId: string; quantityEggs: number; lowStock: boolean; lowStockThresholdEggs: number | null }
+export interface InventoryTxDetail extends InventoryTx { recordedAt: string; sourceId: string | null; createdById: string | null; createdByName: string | null; balanceAfterEggs: number }
 export interface InventoryTx { id: string; type: string; quantityEggs: number; occurredAt: string; sourceType: string | null; reason: string | null; needsReview: boolean }
 
 export interface Dashboard {

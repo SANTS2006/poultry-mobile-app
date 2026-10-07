@@ -191,3 +191,23 @@ describe('SessionManager: start-up', () => {
     expect(s.session.status).toBe('signed_out');
   });
 });
+
+describe('SessionManager: profile picture', () => {
+  it('shows the picture in memory but never writes it to the secure store (it is too large and is re-read at start-up)', async () => {
+    const pic = `data:image/jpeg;base64,${'A'.repeat(40_000)}`;
+    const s = setup((url) => {
+      if (url.endsWith('/login')) return res(200, { status: 'authenticated', tokens, user: { ...user(), avatar: pic } });
+      if (url.endsWith('/auth/me')) return res(200, { ...user(), avatar: pic, fullName: 'New Name' });
+      return res(404);
+    });
+    await s.session.login('a@x.com', 'pw');
+    expect(s.session.user?.avatar).toBe(pic);
+    const cached = JSON.parse((await s.secure.get('auth.user'))!);
+    expect(cached.avatar).toBeUndefined();
+    expect(cached.fullName).toBe('u1');
+    const fresh = await s.session.refreshProfile();
+    expect(fresh?.fullName).toBe('New Name');
+    expect(s.session.user?.avatar).toBe(pic);
+    expect(JSON.parse((await s.secure.get('auth.user'))!).avatar).toBeUndefined();
+  });
+});

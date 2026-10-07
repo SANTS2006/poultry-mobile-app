@@ -1,7 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
-import { useUnreadCount } from '../../../queries/hooks';
 import { useCan, useCanAny } from '../../../state/store';
+import { HeaderActions } from '../../../ui/header-actions';
 import { Icon, type IconName } from '../../../ui/icon';
 import { typeScale, useColors } from '../../../ui/theme';
 
@@ -17,11 +17,11 @@ export default function TabsLayout() {
   const sales = useCan('sales.read');
   const stock = useCan('inventory.read');
   const canRecord = useCanAny('production.create', 'sales.create');
-  const unread = useUnreadCount().data?.unread ?? 0;
   const anyHome = dashboard || canRecord;
   return (
     <Tabs screenOptions={{
-      headerStyle: { backgroundColor: c.bg }, headerShadowVisible: false, headerTintColor: c.text, headerTitleStyle: { ...typeScale.heading, color: c.text },
+      headerStyle: { backgroundColor: c.bg }, headerShadowVisible: false, headerTintColor: c.text, headerTitleStyle: { ...typeScale.heading, color: c.text }, headerRight: () => <HeaderActions />,
+      headerTitleAlign: 'left',
       tabBarActiveTintColor: c.primary, tabBarInactiveTintColor: c.muted, tabBarLabelStyle: { ...typeScale.caption, fontWeight: '600' },
       tabBarStyle: { backgroundColor: c.card, borderTopColor: c.border, height: Platform.OS === 'ios' ? 88 : 68, paddingTop: 6 },
       sceneStyle: { backgroundColor: c.bg },
@@ -30,7 +30,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="production" options={{ title: 'Production', tabBarIcon: tab('egg-outline', 'egg'), href: production ? undefined : null }} />
       <Tabs.Screen name="sales" options={{ title: 'Sales', tabBarIcon: tab('receipt-outline', 'receipt'), href: sales ? undefined : null }} />
       <Tabs.Screen name="stock" options={{ title: 'Stock', tabBarIcon: tab('cube-outline', 'cube'), href: stock ? undefined : null }} />
-      <Tabs.Screen name="more" options={{ title: 'More', tabBarIcon: tab('menu-outline', 'menu'), tabBarBadge: unread > 0 ? (unread > 99 ? '99+' : unread) : undefined, tabBarBadgeStyle: { backgroundColor: c.accent, color: c.onAccent } }} />
+      <Tabs.Screen name="more" options={{ title: 'More', tabBarIcon: tab('menu-outline', 'menu') }} />
     </Tabs>
   );
 }

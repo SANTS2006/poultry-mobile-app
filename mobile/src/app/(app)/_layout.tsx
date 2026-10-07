@@ -22,13 +22,17 @@ export default function AppLayout() {
       <Stack.Screen name="expenses/new" options={{ title: 'New expense' }} />
       <Stack.Screen name="inventory/adjust" options={{ title: 'Adjust stock' }} />
       <Stack.Screen name="inventory/history" options={{ title: 'Stock history' }} />
+      <Stack.Screen name="inventory/[id]" options={{ title: 'Stock movement' }} />
       <Stack.Screen name="payments/new" options={{ title: 'Record payment' }} />
       <Stack.Screen name="reports/index" options={{ title: 'Reports' }} />
       <Stack.Screen name="reports/[name]" options={{ title: 'Report' }} />
       <Stack.Screen name="notifications/index" options={{ title: 'Notifications' }} />
+      <Stack.Screen name="notifications/[id]" options={{ title: 'Notification' }} />
       <Stack.Screen name="notifications/preferences" options={{ title: 'Notification settings' }} />
       <Stack.Screen name="sync" options={{ title: 'Sync' }} />
       <Stack.Screen name="settings/index" options={{ title: 'Settings' }} />
+      <Stack.Screen name="settings/profile" options={{ title: 'Edit profile' }} />
+      <Stack.Screen name="settings/email" options={{ title: 'Email address' }} />
       <Stack.Screen name="settings/password" options={{ title: 'Change password' }} />
       <Stack.Screen name="settings/mfa" options={{ title: 'Two-step sign-in' }} />
       <Stack.Screen name="settings/sessions" options={{ title: 'Devices and sessions' }} />

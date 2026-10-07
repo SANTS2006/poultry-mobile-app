@@ -22,7 +22,7 @@ export default function Home() {
   const q = useDashboard();
   const d = q.data;
   const cur = d?.currency ?? '';
-  const first = user?.fullName?.split(' ')[0] ?? 'there';
+  const name = user?.fullName ?? 'there';
 
   const missing = d?.production?.notRecordedToday ?? [];
   const reviewCount = Object.values(d?.needsReview ?? {}).reduce<number>((a, n) => a + (n ?? 0), 0);
@@ -31,9 +31,9 @@ export default function Home() {
   return (
     <Screen refreshing={q.isRefetching} onRefresh={() => void q.refetch()}>
       <Row style={{ gap: space.md }}>
-        <Avatar name={user?.fullName ?? '?'} size={48} />
+        <Avatar name={user?.fullName ?? '?'} uri={user?.avatar} size={48} />
         <View style={{ flex: 1 }}>
-          <Text variant="title" accessibilityRole="header" numberOfLines={1}>{greeting()}, {first}</Text>
+          <Text variant="title" accessibilityRole="header" numberOfLines={1}>{greeting()}, {name}</Text>
           <Text variant="caption" muted>{d ? formatDate(d.businessDate) : formatDate(new Date().toISOString().slice(0, 10))}</Text>
         </View>
       </Row>

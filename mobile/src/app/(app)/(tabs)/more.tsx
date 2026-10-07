@@ -27,7 +27,7 @@ export default function More() {
     <Screen>
       <Pressable accessibilityRole="button" accessibilityLabel="Open my profile and settings" onPress={() => router.push('/settings')}>
         <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-          <Avatar name={user?.fullName ?? '?'} size={56} />
+          <Avatar name={user?.fullName ?? '?'} uri={user?.avatar} size={56} />
           <View style={{ flex: 1, gap: space.xs }}>
             <Text variant="heading" numberOfLines={1}>{user?.fullName}</Text>
             <Text variant="caption" muted numberOfLines={1}>{user?.email}</Text>

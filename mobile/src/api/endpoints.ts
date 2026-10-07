@@ -1,6 +1,7 @@
 import type { ApiClient } from '../services/api-client';
+import type { UserSummary } from '../services/session-manager';
 import type {
-  AdminUser, AppNotification, AuditEntry, Coop, Customer, Dashboard, Expense, InventorySnapshot, InventoryTx, NotificationPage, NotificationPreference, Page,
+  AdminUser, AppNotification, AuditEntry, Coop, Customer, Dashboard, Expense, InventorySnapshot, InventoryTx, InventoryTxDetail, NotificationPage, NotificationPreference, Page,
   PayMethod, PriceRow, ProductionRecord, ReportResult, Role, Sale, SessionInfo, Supplier, Unit, UnitInfo,
 } from './types';
 
@@ -59,6 +60,7 @@ export function createEndpoints(api: ApiClient) {
     inventory: {
       current: () => get<InventorySnapshot>('/inventory'),
       transactions: (p: Params) => get<Page<InventoryTx>>('/inventory/transactions', p),
+      transaction: (id: string) => get<InventoryTxDetail>(`/inventory/transactions/${id}`),
       reconciliation: () => get<{ balanceEggs: number; ledgerSumEggs: number; consistent: boolean }>('/inventory/reconciliation'),
       adjust: (body: { type: 'ADJUSTMENT' | 'DAMAGE' | 'LOSS' | 'USAGE'; direction?: 'INCREASE' | 'DECREASE'; unit: Unit; quantity: number; reason: string; clientId?: string }) => post('/inventory/adjustments', body),
     },
@@ -70,6 +72,7 @@ export function createEndpoints(api: ApiClient) {
 
     notifications: {
       list: (p: Params) => get<NotificationPage>('/notifications', p),
+      get: (id: string) => get<AppNotification>(`/notifications/${id}`),
       unread: () => get<{ unread: number }>('/notifications/unread-count'),
       read: (id: string) => post<AppNotification>(`/notifications/${id}/read`),
       opened: (id: string) => post(`/notifications/${id}/opened`),
@@ -84,7 +87,9 @@ export function createEndpoints(api: ApiClient) {
     },
 
     account: {
-      me: () => get('/auth/me'),
+      me: () => get<UserSummary>('/auth/me'),
+      updateProfile: (body: { fullName?: string; avatar?: string | null }) => api.request<UserSummary>('PATCH', '/v1/auth/profile', body),
+      changeEmail: (newEmail: string, currentPassword: string) => post<UserSummary>('/auth/change-email', { newEmail, currentPassword }),
       sessions: () => get<SessionInfo[]>('/auth/sessions'),
       revokeSession: (id: string) => del(`/auth/sessions/${id}`),
       logoutAll: () => post('/auth/logout-all'),

@@ -1,10 +1,13 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { useAppStore } from '../state/store';
-import { Button, Segmented, Stepper } from './components';
+import { Avatar, Button, Segmented, Stepper } from './components';
+import { NotificationBell, unreadLabel } from './header-actions';
 import { ReasonModal } from './reason-modal';
 import { StatusBanners } from './status-banners';
 
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
+let mockUnread = 0;
+jest.mock('../queries/hooks', () => ({ useUnreadCount: () => ({ data: { unread: mockUnread } }) }));
 
 // react-test-renderer needs this flag to allow act() outside of a testing library
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -156,5 +159,35 @@ describe('EmptyState and ErrorView', () => {
     expect(texts(r)).toContain('We couldn’t load this');
     act(() => { r.root.findByProps({ accessibilityRole: 'button' }).props.onPress(); });
     expect(retry).toHaveBeenCalled();
+  });
+});
+
+
+describe('NotificationBell', () => {
+  const bell = () => render(<NotificationBell />);
+  it('shows no count when everything is read, and a count (capped at 99+) when not', () => {
+    mockUnread = 0;
+    expect(texts(bell())).toBe('');
+    mockUnread = 7;
+    expect(texts(bell())).toBe('7');
+    mockUnread = 250;
+    expect(texts(bell())).toBe('99+');
+  });
+  it('tells screen readers how many are unread', () => {
+    expect(unreadLabel(0)).toBe('Notifications, none unread');
+    expect(unreadLabel(3)).toBe('Notifications, 3 unread');
+    mockUnread = 3;
+    expect(bell().root.findByProps({ accessibilityRole: 'button' }).props.accessibilityLabel).toBe('Notifications, 3 unread');
+  });
+});
+
+describe('Avatar', () => {
+  it('shows initials without a picture, the picture when there is one, and falls back to initials if it cannot load', () => {
+    expect(texts(render(<Avatar name="Ada Lovelace" />))).toBe('AL');
+    const withPic = render(<Avatar name="Ada Lovelace" uri="data:image/jpeg;base64,AAAA" />);
+    expect(texts(withPic)).toBe('');
+    const img = withPic.root.findAll((n) => typeof n.props.onError === 'function')[0];
+    act(() => { img.props.onError(); });
+    expect(texts(withPic)).toBe('AL');
   });
 });

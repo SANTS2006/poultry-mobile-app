@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Switch, View } from 'react-native';
+import { Alert, Pressable, Switch, View } from 'react-native';
 import { APP_ENV, APP_VERSION } from '../../../config';
 import { describeError } from '../../../lib/errors';
 import { IS_EXPO_GO } from '../../../lib/runtime';
@@ -54,14 +54,17 @@ export default function Settings() {
 
   return (
     <Screen>
-      <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-        <Avatar name={user?.fullName ?? '?'} size={60} />
-        <View style={{ flex: 1, gap: space.xs }}>
-          <Text variant="heading" numberOfLines={1}>{user?.fullName}</Text>
-          <Text variant="caption" muted numberOfLines={1}>{user?.email}</Text>
-          <Badge tone={user?.mfaEnabled ? 'ok' : 'warn'} label={user?.mfaEnabled ? 'Two-step sign-in on' : 'Two-step sign-in off'} />
-        </View>
-      </Card>
+      <Pressable accessibilityRole="button" accessibilityLabel="Edit my profile" onPress={() => router.push('/settings/profile' as never)}>
+        <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+          <Avatar name={user?.fullName ?? '?'} uri={user?.avatar} size={64} />
+          <View style={{ flex: 1, gap: space.xs }}>
+            <Text variant="heading" numberOfLines={1}>{user?.fullName}</Text>
+            <Text variant="caption" muted numberOfLines={1}>{user?.email}</Text>
+            <Badge tone={user?.mfaEnabled ? 'ok' : 'warn'} label={user?.mfaEnabled ? 'Two-step sign-in on' : 'Two-step sign-in off'} />
+          </View>
+          <Icon name="chevron-forward" size="sm" color={c.muted} />
+        </Card>
+      </Pressable>
 
       {IS_EXPO_GO || !services.dbEncrypted ? (
         <Card tone="warn">
@@ -71,9 +74,17 @@ export default function Settings() {
       ) : null}
 
       <View style={{ gap: space.md }}>
+        <SectionHeader title="Account" />
+        <Card style={group}>
+          <ListRow icon="person-outline" title="Edit profile" subtitle="Photo and name" onPress={() => router.push('/settings/profile' as never)} />
+          <ListRow icon="mail-outline" title="Email address" subtitle={user?.pendingEmail ? `Waiting to confirm ${user.pendingEmail}` : user?.email} onPress={() => router.push('/settings/email' as never)} />
+          <ListRow icon="key-outline" title="Change password" subtitle="Signs you out on every device" onPress={() => router.push('/settings/password')} />
+        </Card>
+      </View>
+
+      <View style={{ gap: space.md }}>
         <SectionHeader title="Security" />
         <Card style={group}>
-          <ListRow icon="key-outline" title="Change password" subtitle="Signs you out on every device" onPress={() => router.push('/settings/password')} />
           <ListRow icon="shield-checkmark-outline" title="Two-step sign-in" subtitle={user?.mfaEnabled ? 'On · manage recovery codes' : 'Off · add an authenticator app'} onPress={() => router.push('/settings/mfa')} />
           <ListRow icon="phone-portrait-outline" title="Devices and sessions" subtitle="See where you are signed in" onPress={() => router.push('/settings/sessions')} />
           <ListRow

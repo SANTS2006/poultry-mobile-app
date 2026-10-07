@@ -3,7 +3,17 @@ import type { ApiClient } from './api-client';
 import type { PublicApi } from './public-api';
 import type { SecureStore, SessionTokens, TokenManager } from './token-manager';
 
-export interface UserSummary { id: string; email: string; fullName: string; mfaEnabled: boolean; roles: string[]; permissions: string[] }
+export interface UserSummary {
+  id: string; email: string; fullName: string; mfaEnabled: boolean; roles: string[]; permissions: string[];
+  /** Small profile picture as a data URL. Kept in memory only: it is too large for the secure store and is re-read from the server at start-up. */
+  avatar?: string | null;
+  emailVerified?: boolean;
+  /** A new address waiting for its verification link; the sign-in address does not change until then. */
+  pendingEmail?: string | null;
+}
+
+/** The cached copy of the profile that goes in the secure store: everything except the picture. */
+const cacheable = (u: UserSummary): string => JSON.stringify({ ...u, avatar: undefined });
 
 export type LoginOutcome =
   | { kind: 'authenticated'; user: UserSummary }
@@ -61,7 +71,7 @@ export class SessionManager {
     const cached = await this.readCachedUser();
     try {
       const fresh = await this.api.request<UserSummary>('GET', '/v1/auth/me');
-      await this.secure.set(USER_KEY, JSON.stringify(fresh));
+      await this.secure.set(USER_KEY, cacheable(fresh));
       await this.enter(fresh);
     } catch (e) {
       if (e instanceof AuthRequiredError || (e instanceof HttpError && (e.status === 401 || e.status === 403))) { await this.forget(); return this.publish('signed_out', null); }
@@ -74,7 +84,7 @@ export class SessionManager {
   async refreshProfile(): Promise<UserSummary | null> {
     try {
       const fresh = await this.api.request<UserSummary>('GET', '/v1/auth/me');
-      await this.secure.set(USER_KEY, JSON.stringify(fresh));
+      await this.secure.set(USER_KEY, cacheable(fresh));
       this.publish('signed_in', fresh);
       return fresh;
     } catch { return this.user; }
@@ -103,7 +113,7 @@ export class SessionManager {
     if (res.status === 'mfa_setup_required') return { kind: 'mfa_setup_required', setupToken: res.setupToken };
     await this.assertOutboxAllows(res.user.id);
     await this.tokens.setSession(res.tokens);
-    await this.secure.set(USER_KEY, JSON.stringify(res.user));
+    await this.secure.set(USER_KEY, cacheable(res.user));
     await this.enter(res.user);
     return { kind: 'authenticated', user: res.user };
   }

@@ -1,16 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Alert, Switch } from 'react-native';
+import { Alert, Switch, View } from 'react-native';
+import type { NotificationPreference } from '../../../api/types';
 import { describeError } from '../../../lib/errors';
+import { CATEGORY_ICON, CATEGORY_INFO, categoryName } from '../../../lib/notification-meta';
 import { registerForPush } from '../../../services/push';
 import { useEndpoints } from '../../../state/app';
-import { Button, Card, ErrorView, ListRow, Loading, Screen, SectionTitle, Text } from '../../../ui/components';
-import { useColors } from '../../../ui/theme';
-
-const NAMES: Record<string, string> = {
-  PRODUCTION: 'Production', INVENTORY: 'Stock alerts', SALES: 'Sales', EXPENSES: 'Expenses', PAYMENTS: 'Payments', SYNC: 'Sync results',
-  DAILY_SUMMARY: 'Daily summary', SECURITY: 'Security alerts', ADMIN: 'Administration', SYSTEM: 'System notices',
-};
+import { Button, Card, ErrorView, ListRow, Loading, Screen, SectionHeader, Text } from '../../../ui/components';
+import { space, useColors } from '../../../ui/theme';
 
 export default function NotificationPreferences() {
   const api = useEndpoints();
@@ -19,11 +16,17 @@ export default function NotificationPreferences() {
   const q = useQuery({ queryKey: ['notifications', 'preferences'], queryFn: () => api.notifications.preferences() });
   const [busy, setBusy] = useState(false);
 
+  /** Flips the switch straight away and puts it back if the server says no. */
   async function toggle(category: string, enabled: boolean) {
+    const key = ['notifications', 'preferences'];
+    const before = qc.getQueryData<{ preferences: NotificationPreference[] }>(key);
+    qc.setQueryData(key, before && { preferences: before.preferences.map((p) => (p.category === category ? { ...p, enabled } : p)) });
     try {
       await api.notifications.setPreferences([{ category, enabled }]);
-      await qc.invalidateQueries({ queryKey: ['notifications', 'preferences'] });
-    } catch (e) { Alert.alert('Could not save', describeError(e)); }
+    } catch (e) {
+      qc.setQueryData(key, before);
+      Alert.alert('Could not save', describeError(e));
+    }
   }
 
   async function enablePush() {
@@ -40,21 +43,29 @@ export default function NotificationPreferences() {
   }
 
   return (
-    <Screen padded={false}>
-      <Card style={{ margin: 16 }}>
-        <Text bold>Push notifications on this phone</Text>
+    <Screen>
+      <Card style={{ gap: space.md }}>
+        <Text variant="heading">Push notifications on this phone</Text>
         <Text muted>Lock-screen messages are deliberately generic (no amounts or names). Details appear inside the app.</Text>
-        <Button title="Turn on / send a test" variant="secondary" onPress={() => void enablePush()} busy={busy} />
+        <Button title="Turn on / send a test" icon="notifications-outline" variant="secondary" onPress={() => void enablePush()} busy={busy} />
       </Card>
-      <SectionTitle>What you are notified about</SectionTitle>
-      {q.isLoading ? <Loading /> : null}
-      {q.error ? <ErrorView message={describeError(q.error)} onRetry={() => void q.refetch()} /> : null}
-      {q.data?.preferences.map((p) => (
-        <ListRow
-          key={p.category} title={NAMES[p.category] ?? p.category} subtitle={p.mutable ? undefined : 'Always on for your safety'}
-          right={<Switch value={p.enabled} disabled={!p.mutable} onValueChange={(v) => void toggle(p.category, v)} trackColor={{ true: c.primary }} accessibilityLabel={NAMES[p.category] ?? p.category} />}
-        />
-      ))}
+
+      <View style={{ gap: space.md }}>
+        <SectionHeader title="What you are notified about" />
+        {q.isLoading ? <Loading /> : null}
+        {q.error ? <ErrorView message={describeError(q.error)} onRetry={() => void q.refetch()} /> : null}
+        {q.data ? (
+          <Card style={{ padding: 0, gap: 0, overflow: 'hidden' }}>
+            {q.data.preferences.map((p) => (
+              <ListRow
+                key={p.category} icon={CATEGORY_ICON[p.category]} title={categoryName(p.category)}
+                subtitle={p.mutable ? CATEGORY_INFO[p.category]?.hint : 'Always on for your safety'}
+                right={<Switch value={p.enabled} disabled={!p.mutable} onValueChange={(v) => void toggle(p.category, v)} trackColor={{ true: c.primary }} accessibilityLabel={categoryName(p.category)} />}
+              />
+            ))}
+          </Card>
+        ) : null}
+      </View>
     </Screen>
   );
 }
