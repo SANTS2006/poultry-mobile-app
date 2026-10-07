@@ -33,7 +33,7 @@ JWT_SECRET=dev-only-jwt-secret-change-me-0123456789
 JWT_REFRESH_SECRET=dev-only-refresh-secret-change-me-0123456789
 DATA_ENCRYPTION_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
 EOF
-npx prisma migrate deploy && npm run db:seed
+npx prisma generate && npx prisma migrate deploy && npm run db:seed
 npm run demo:data -- --no-mfa               # demo users, coops, prices, customers, 5,000 eggs opening stock
 npm run start:dev                           # API on port 3000 (listens on all interfaces)
 ```
