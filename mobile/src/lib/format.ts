@@ -72,3 +72,9 @@ export function businessToday(timeZone: string | undefined, now = new Date()): s
   }
   return todayLocal(now);
 }
+
+/** "Good morning" / "Good afternoon" / "Good evening" from the phone's local hour. */
+export function greeting(now = new Date()): string {
+  const h = now.getHours();
+  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+}

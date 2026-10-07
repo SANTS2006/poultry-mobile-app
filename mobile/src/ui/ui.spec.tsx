@@ -104,3 +104,57 @@ describe('ReasonModal', () => {
   });
 });
 
+
+describe('Field', () => {
+  const { Field } = require('./components') as typeof import('./components'); // eslint-disable-line @typescript-eslint/no-require-imports
+  const iconNames = (r: ReactTestRenderer) => r.root.findAll((n) => (n.type as unknown) === 'Icon').map((n) => n.props.name);
+
+  it('keeps a visible label, shows the error under the field with an icon, and announces it', () => {
+    const r = render(<Field label="Email" value="" onChangeText={() => undefined} error="Enter your email address." />);
+    expect(texts(r)).toContain('Email');
+    expect(texts(r)).toContain('Enter your email address.');
+    expect(iconNames(r)).toContain('alert-circle'); // not colour alone
+    expect(r.root.findAll((n) => n.props.accessibilityRole === 'alert').length).toBeGreaterThan(0);
+  });
+
+  it('password fields have a show/hide control that toggles masking', () => {
+    const r = render(<Field label="Password" value="secret" onChangeText={() => undefined} secureTextEntry />);
+    const input = () => r.root.findByProps({ accessibilityLabel: 'Password' });
+    expect(input().props.secureTextEntry).toBe(true);
+    const toggle = () => r.root.findAll((n) => n.props.accessibilityLabel === 'Show password' || n.props.accessibilityLabel === 'Hide password').find((n) => typeof n.props.onPress === 'function')!;
+    expect(toggle().props.accessibilityLabel).toBe('Show password');
+    act(() => { toggle().props.onPress(); });
+    expect(input().props.secureTextEntry).toBe(false);
+    expect(toggle().props.accessibilityLabel).toBe('Hide password');
+  });
+});
+
+describe('Badge', () => {
+  const { Badge } = require('./components') as typeof import('./components'); // eslint-disable-line @typescript-eslint/no-require-imports
+  it('always pairs colour with an icon and text', () => {
+    for (const tone of ['ok', 'warn', 'danger', 'info', 'muted'] as const) {
+      const r = render(<Badge tone={tone} label="Status" />);
+      expect(texts(r)).toBe('Status');
+      expect(r.root.findAll((n) => (n.type as unknown) === 'Icon')).toHaveLength(1);
+    }
+  });
+});
+
+describe('EmptyState and ErrorView', () => {
+  const { EmptyState, ErrorView } = require('./components') as typeof import('./components'); // eslint-disable-line @typescript-eslint/no-require-imports
+  it('explains what is missing and offers a next step', () => {
+    const onPress = jest.fn();
+    const r = render(<EmptyState title="No sales yet" hint="Record a sale and it appears here." action={<Button title="New sale" onPress={onPress} />} />);
+    expect(texts(r)).toContain('No sales yet');
+    expect(texts(r)).toContain('Record a sale');
+    act(() => { r.root.findByProps({ accessibilityRole: 'button' }).props.onPress(); });
+    expect(onPress).toHaveBeenCalled();
+  });
+  it('shows a friendly error with a retry that works', () => {
+    const retry = jest.fn();
+    const r = render(<ErrorView message="No connection to the server." onRetry={retry} />);
+    expect(texts(r)).toContain('We couldn’t load this');
+    act(() => { r.root.findByProps({ accessibilityRole: 'button' }).props.onPress(); });
+    expect(retry).toHaveBeenCalled();
+  });
+});

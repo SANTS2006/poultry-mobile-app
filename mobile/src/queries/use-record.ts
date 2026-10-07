@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { useToast } from '../ui/toast';
 import { describeError } from '../lib/errors';
 import { useApp } from '../state/app';
 import { OfflineValidationError, type OperationType, type OutboxItem } from '../sync';
@@ -36,4 +37,13 @@ export function useRecord(type: OperationType) {
 export async function pendingCustomers(services: ReturnType<typeof useApp>['services']): Promise<{ clientId: string; name: string }[]> {
   const items = await services.engine.list({ statuses: ['pending', 'syncing'] });
   return items.filter((i) => i.type === 'customer.create').map((i) => ({ clientId: i.clientId, name: String(i.payload.name ?? 'New customer') }));
+}
+
+/** Confirms a saved record without blocking the screen: green when the server has it, neutral when it is safely queued on the phone. */
+export function useSavedToast() {
+  const toast = useToast();
+  return useCallback((result: RecordResult, okMessage: string) => {
+    if (result.sentNow) toast.show(okMessage, 'success');
+    else toast.show('Saved on this phone. It will send when you’re back online.', 'info');
+  }, [toast]);
 }
