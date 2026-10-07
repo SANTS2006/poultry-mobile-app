@@ -52,7 +52,7 @@ Mobile: local SQLite (expo-sqlite, encrypted key in SecureStore) holding an **ou
 `(auth)`: splash, login, verify-email, forgot/reset, mfa-setup, mfa-verify, biometric-setup. `(tabs)`: Home, Production, Sales, Inventory, More. Stack screens: add-production, production/[id], new-sale, sale/[id], inventory/transactions, customers, customer/[id], expenses, new-expense, expense/[id], payments, reports, notifications, profile, security(sessions/devices), settings. `admin/`: users, user/[id], roles, permissions, coops, products, prices, categories, suppliers, audit-logs, notification-config, security-config, system-settings. Menus render from the permission list returned at login (UX only; the API is the enforcement point).
 
 ## 10. API plan (prefix `/v1`)
-- Auth: `POST /auth/login|refresh|logout|logout-all|verify-email|forgot-password|reset-password|change-password`, `POST /auth/mfa/{enroll,verify,disable,recovery}`, `GET/DELETE /auth/sessions`.
+- Auth: `POST /auth/login|refresh|logout|logout-all|verify-email|forgot-password|reset-password|change-password|change-email`, `PATCH /auth/profile`, `POST /auth/mfa/{enroll,verify,disable,recovery}`, `GET/DELETE /auth/sessions`.
 - Admin: `/users`, `/roles`, `/permissions`, `/farms`, `/coops`, `/products`, `/prices`, `/expense-categories`, `/suppliers`, `/settings`, `/audit-logs`.
 - Ops: `/production`, `/inventory` (+`/transactions`, `POST /inventory/adjustments`), `/sales`, `/customers`, `/payments`, `/expenses`, `/attachments`.
 - Platform: `/notifications` (+read, read-all, preferences, devices), `/dashboard`, `/reports/{production,sales,expenses,inventory,financial}` (+`?format=csv|pdf`), `/sync/{push,pull}`, `/health`.

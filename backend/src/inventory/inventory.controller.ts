@@ -1,4 +1,4 @@
-import { BadRequestException, Body, ConflictException, Controller, Get, Post, Query, Res } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from '@nestjs/common';
 import { Transform, Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, Min } from 'class-validator';
 import { Prisma } from '@prisma/client';
@@ -66,6 +66,23 @@ export class InventoryController {
     return {
       page, limit, total,
       items: rows.map((r) => ({ id: r.id, type: r.type, quantityEggs: r.quantityEggs, occurredAt: r.occurredAt, sourceType: r.sourceType, sourceId: r.sourceId, reason: r.reason, createdById: r.createdById, needsReview: r.needsReview })),
+    };
+  }
+
+  /** One ledger entry in full: who recorded it, what it came from, and what the stock stood at straight after it. */
+  @RequirePermissions('inventory.read') @Get('transactions/:id')
+  async transaction(@Param('id', ParseUUIDPipe) id: string) {
+    const farmId = await this.farms.resolve();
+    const t = await this.prisma.inventoryTransaction.findFirst({ where: { id, farmId } });
+    if (!t) throw new NotFoundException('Stock movement not found.');
+    const [{ sum }] = await this.prisma.$queryRaw<{ sum: bigint | null }[]>`
+      SELECT COALESCE(SUM("quantityEggs"), 0)::bigint AS sum FROM "InventoryTransaction"
+      WHERE "farmId" = ${farmId}::uuid AND "productId" = ${t.productId}::uuid
+        AND ("occurredAt" < ${t.occurredAt} OR ("occurredAt" = ${t.occurredAt} AND "createdAt" <= ${t.createdAt}))`;
+    const by = t.createdById ? await this.prisma.profile.findUnique({ where: { userId: t.createdById }, select: { fullName: true } }) : null;
+    return {
+      id: t.id, type: t.type, quantityEggs: t.quantityEggs, occurredAt: t.occurredAt, recordedAt: t.createdAt, sourceType: t.sourceType, sourceId: t.sourceId,
+      reason: t.reason, needsReview: t.needsReview, createdById: t.createdById, createdByName: by?.fullName ?? null, balanceAfterEggs: Number(sum),
     };
   }
 

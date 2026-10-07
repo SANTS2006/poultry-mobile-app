@@ -21,7 +21,9 @@ Sign-in (password → MFA code / recovery code; mandatory MFA enrolment for priv
 accept invitation, biometric lock · Home dashboard (only sections the role may see; cash flow labelled "not profit") · Production (list, record, correct, void) ·
 Sales (list, new sale, detail, payment, void) · Customers (list, detail, new) · Expenses (list, new) · Stock (balance, history, adjustments, ledger check) ·
 Reports (5 reports, period presets, PDF/CSV share sheet) · Notification centre + preferences + push registration · Sync centre (waiting / attention / discard) ·
-Settings (password, MFA, devices/sessions, biometric lock, sign-out) · Admin (users, roles, invite, prices, notification rules, audit log with integrity check).
+Notification detail (opening one marks it read) · Stock movement detail (who, when, stock afterwards, link to the source sale/production) ·
+Every main screen has a bell with a live unread count and a profile button (photo or initials) at the top right; the profile button opens Settings ·
+Settings (edit profile photo and name, change email, password, MFA, devices/sessions, biometric lock, sign-out) · Admin (users, roles, invite, prices, notification rules, audit log with integrity check).
 
 ## Security decisions
 - Tokens only in the platform secure store (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`); never AsyncStorage, never URLs (realtime token in the handshake `auth`).
@@ -36,6 +38,12 @@ Settings (password, MFA, devices/sessions, biometric lock, sign-out) · Admin (u
 ## Backend additions in this phase
 `GET /v1/audit` (filters, paging, `audit.read`) and `GET /v1/audit/verify` (recomputes the hash chain) — read-only, no write routes (4 e2e tests).
 
+### Profile, email and stock detail (added later)
+- `PATCH /v1/auth/profile` `{ fullName?, avatar? }` — own name and picture. The picture is a JPEG/PNG/WebP **data URL** (the phone crops to a square and shrinks to 256 px, ~20–40 KB; the server accepts at most 200,000 characters and checks the type). It is stored in `Profile.avatar`, returned by `/auth/me` and at sign-in, kept **in memory only** on the phone (too large for the secure store) and re-read at start-up. The audit log records *that* it changed, never the image.
+- `POST /v1/auth/change-email` `{ newEmail, currentPassword }` — needs the current password and starts a **pending** change: the sign-in address does not change until the link e-mailed to the *new* address is used (so a typo cannot lock anyone out); the old address is told when it changes. Throttled like the password routes.
+- `GET /v1/inventory/transactions/:id` — one ledger entry with the recording user and the stock level straight after it.
+- The unread count updates through the same realtime event that already refreshes the notification list (`notification.created`), with a 2-minute poll as the fallback when the socket is down.
+
 ## Build & run
 `cd mobile && npm ci && cp .env.example .env` (set `EXPO_PUBLIC_API_URL`), then `npx expo start` (development build needed: SQLCipher, biometrics and push are not in Expo Go).
 EAS profiles are in `eas.json` (development / preview APK / production AAB+IPA). Placeholders you must replace: `extra.eas.projectId` in `app.json`,
@@ -47,5 +55,7 @@ API URLs in `eas.json` (`*.example.invalid`), iOS `ascAppId`, and FCM/APNs crede
 - No push notification runs in the background app-refresh sense; sync runs while the app is open (foreground auto-sync + on reconnect).
 - "Fix and resend" for a refused record is not in the UI (retry or discard only; the engine's `correctAndRetry` exists).
 - Charts are simple bars (no chart library). Report tables show the first columns/rows; the export has everything.
-- Icons are emoji/text (no icon font), English only, no tablet layouts.
+- English only, no tablet layouts.
+- The photo picker/camera (`expo-image-picker`, `expo-image-manipulator`) and the new screens were type-checked, unit-tested where logic exists and bundled for Android and iOS, but not run on a device.
+- The sign-in screen follows the supplied template's layout (brand header, rounded white sheet, pill fields and button) in the app's own green/amber palette. The template's Google/Facebook buttons and "agree to terms" checkbox are not built: there is no social sign-in, and no terms document to link to. Accounts are invite-only.
 - Expense receipt photos and approval workflow are not implemented (as documented in Phase 6).

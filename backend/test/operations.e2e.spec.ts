@@ -227,6 +227,11 @@ describe('Core operations: production, inventory, sales, customers, payments, ex
       const tx = (await get('/inventory/transactions?type=PRODUCTION&limit=5', 'manager').expect(200)).body;
       expect(tx.items.every((t: { type: string; quantityEggs: number }) => t.type === 'PRODUCTION' && t.quantityEggs > 0)).toBe(true);
       await get('/inventory/transactions?type=BOGUS', 'manager').expect(400);
+      const one = (await get(`/inventory/transactions/${tx.items[0].id}`, 'manager').expect(200)).body;
+      expect(one).toMatchObject({ id: tx.items[0].id, type: 'PRODUCTION' });
+      expect(typeof one.balanceAfterEggs).toBe('number');
+      await get('/inventory/transactions/00000000-0000-4000-8000-000000000000', 'manager').expect(404);
+      await get('/inventory/transactions/not-a-uuid', 'manager').expect(400);
       await expect(prisma.inventoryTransaction.update({ where: { id: tx.items[0].id }, data: { quantityEggs: 1 } })).rejects.toThrow(/append-only/);
     });
   });

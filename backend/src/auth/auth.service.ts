@@ -24,7 +24,7 @@ export interface SessionTokens {
   tokenType: 'Bearer';
 }
 
-export type UserSummary = { id: string; email: string; fullName: string; roles: string[]; permissions: string[]; mfaEnabled: boolean };
+export type UserSummary = { id: string; email: string; fullName: string; avatar: string | null; emailVerified: boolean; pendingEmail: string | null; roles: string[]; permissions: string[]; mfaEnabled: boolean };
 
 export type LoginResult =
   | { status: 'authenticated'; tokens: SessionTokens; user: UserSummary }
@@ -179,6 +179,19 @@ export class AuthService {
   async verifyEmail(token: string): Promise<void> {
     const userId = await this.emailTokens.consume(token, 'VERIFY_EMAIL');
     if (!userId) throw new BadRequestException('This link is invalid or has expired.');
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true, pendingEmail: true } });
+    if (user.pendingEmail) {
+      // The link was sent to the new address, so using it proves the mailbox: only now does the sign-in address change.
+      try {
+        await this.prisma.user.update({ where: { id: userId }, data: { email: user.pendingEmail, pendingEmail: null, emailVerified: true } });
+      } catch {
+        await this.prisma.user.update({ where: { id: userId }, data: { pendingEmail: null } });
+        throw new BadRequestException('That email address is no longer available. Request the change again with a different one.');
+      }
+      await this.audit.record({ action: 'auth.email.changed', userId, entityType: 'user', entityId: userId, before: { email: user.email }, after: { email: user.pendingEmail } });
+      await this.mail.send({ to: user.email, subject: 'Your Makarifor email address was changed', text: `The sign-in email for your account is now ${user.pendingEmail}. If this was not you, contact an administrator immediately.` });
+      return;
+    }
     await this.prisma.user.update({ where: { id: userId }, data: { emailVerified: true } });
     await this.audit.record({ action: 'auth.email.verified', userId, entityType: 'user', entityId: userId });
   }
@@ -260,6 +273,41 @@ export class AuthService {
     await this.mail.send({ to: user.email, subject: 'Your Makarifor password was changed', text: 'Your password was just changed. If this was not you, contact an administrator immediately.' });
   }
 
+  /** Own display name and picture. The picture itself is never written to the audit log, only that it changed. */
+  async updateProfile(user: AuthUser, input: { fullName?: string; avatar?: string | null }, meta: RequestMeta): Promise<UserSummary> {
+    const data: { fullName?: string; avatar?: string | null } = {};
+    if (input.fullName !== undefined) data.fullName = input.fullName;
+    if (input.avatar !== undefined) data.avatar = input.avatar;
+    if (Object.keys(data).length === 0) throw new BadRequestException('Nothing to change.');
+    await this.prisma.$transaction(async (tx) => {
+      await tx.profile.upsert({ where: { userId: user.id }, update: data, create: { userId: user.id, fullName: data.fullName ?? user.fullName, avatar: data.avatar ?? null } });
+      await this.audit.record({
+        action: 'auth.profile.updated', userId: user.id, userName: user.fullName, entityType: 'user', entityId: user.id,
+        before: input.fullName !== undefined ? { fullName: user.fullName } : undefined,
+        after: { ...(input.fullName !== undefined ? { fullName: input.fullName } : {}), ...(input.avatar !== undefined ? { avatar: input.avatar === null ? 'removed' : 'changed' } : {}) },
+        ip: meta.ip, requestId: meta.requestId,
+      }, tx);
+    });
+    return this.summary(user.id);
+  }
+
+  /** Changing the sign-in address needs the current password. The address changes only after the link sent to the NEW mailbox is used (a typo can't lock anyone out), and the old one is told. */
+  async changeEmail(user: AuthUser, newEmail: string, currentPassword: string, meta: RequestMeta): Promise<UserSummary> {
+    const row = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    if (!(await this.passwords.verify(row.passwordHash, currentPassword))) {
+      await this.audit.record({ action: 'auth.email.change_failed', userId: user.id, ip: meta.ip, requestId: meta.requestId });
+      throw new ForbiddenException('Your current password is incorrect.');
+    }
+    if (newEmail === row.email) throw new BadRequestException('That is already your email address.');
+    const taken = await this.prisma.user.findUnique({ where: { email: newEmail }, select: { id: true } });
+    if (taken) throw new BadRequestException('That email address cannot be used. Try a different one.');
+    await this.prisma.user.update({ where: { id: user.id }, data: { pendingEmail: newEmail } });
+    await this.audit.record({ action: 'auth.email.change_requested', userId: user.id, userName: user.fullName, entityType: 'user', entityId: user.id, after: { pendingEmail: newEmail }, ip: meta.ip, requestId: meta.requestId });
+    const token = await this.emailTokens.issue(user.id, 'VERIFY_EMAIL');
+    await this.emailTokens.sendLink(newEmail, 'VERIFY_EMAIL', token);
+    return this.summary(user.id);
+  }
+
   // ───────────── helpers ─────────────
 
   async summary(userId: string): Promise<UserSummary> {
@@ -268,7 +316,7 @@ export class AuthService {
       include: { profile: true, roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } } },
     });
     return {
-      id: u.id, email: u.email, fullName: u.profile?.fullName ?? u.email, mfaEnabled: u.mfaEnabled,
+      id: u.id, email: u.email, fullName: u.profile?.fullName ?? u.email, avatar: u.profile?.avatar ?? null, emailVerified: u.emailVerified, pendingEmail: u.pendingEmail, mfaEnabled: u.mfaEnabled,
       roles: u.roles.map((r) => r.role.code),
       permissions: [...new Set(u.roles.flatMap((r) => r.role.permissions.map((p) => p.permission.code)))],
     };

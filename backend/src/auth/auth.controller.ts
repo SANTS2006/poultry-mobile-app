@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Req, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Patch, Param, ParseUUIDPipe, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { AuditService } from '../audit/audit.service';
@@ -8,7 +8,7 @@ import { CurrentUser, Meta } from './decorators/current-user.decorator';
 import { AnyAuthenticated } from './decorators/permissions.decorator';
 import { Public } from './decorators/public.decorator';
 import {
-  AcceptInviteDto, ChangePasswordDto, EmailOnlyDto, LoginDto, MfaConfirmDto, MfaLoginDto, RefreshDto, ResetPasswordDto, StepUpDto, TokenDto,
+  AcceptInviteDto, ChangeEmailDto, ChangePasswordDto, UpdateProfileDto, EmailOnlyDto, LoginDto, MfaConfirmDto, MfaLoginDto, RefreshDto, ResetPasswordDto, StepUpDto, TokenDto,
 } from './dto/auth.dto';
 import { AuthenticationService, bearerToken } from './guards/jwt-auth.guard';
 import { MfaService } from './mfa.service';
@@ -57,6 +57,16 @@ export class AuthController {
   @AnyAuthenticated() @Get('me')
   me(@CurrentUser() user: AuthUser) {
     return this.auth.summary(user.id);
+  }
+
+  @AnyAuthenticated() @Throttle(MODERATE) @Patch('profile')
+  updateProfile(@CurrentUser() user: AuthUser, @Body() dto: UpdateProfileDto, @Meta() meta: RequestMeta) {
+    return this.auth.updateProfile(user, dto, meta);
+  }
+
+  @AnyAuthenticated() @Throttle(STRICT) @HttpCode(200) @Post('change-email')
+  changeEmail(@CurrentUser() user: AuthUser, @Body() dto: ChangeEmailDto, @Meta() meta: RequestMeta) {
+    return this.auth.changeEmail(user, dto.newEmail, dto.currentPassword, meta);
   }
 
   // ── e-mail verification / invitation / password reset (public, enumeration-safe, single-use tokens) ──
