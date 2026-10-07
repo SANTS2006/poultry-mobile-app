@@ -1,0 +1,713 @@
+// Makarifor Poultry Management — PostgreSQL (Neon) schema.
+// Conventions: UUID PKs, NUMERIC money, egg quantities as integer base eggs, timestamptz,
+// soft delete on masters/financial docs, `version` for optimistic locking, `clientId` for offline idempotency.
+// CHECK constraints, partial indexes and the audit-immutability trigger live in the hand-written
+// migration `*_constraints` because Prisma cannot express them.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+// ───────────────────────── Enums ─────────────────────────
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  DISABLED
+  LOCKED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum RecordStatus {
+  ACTIVE
+  VOIDED
+}
+
+enum InventoryTxType {
+  OPENING
+  PRODUCTION
+  SALE
+  USAGE
+  DAMAGE
+  LOSS
+  ADJUSTMENT
+  TRANSFER
+  CORRECTION
+}
+
+enum CustomerType {
+  WALK_IN
+  REGULAR
+  WHOLESALE
+}
+
+enum PaymentMethod {
+  CASH
+  MOBILE_MONEY
+  BANK_TRANSFER
+  OTHER
+}
+
+enum EmailTokenType {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+  INVITE
+}
+
+enum NotificationCategory {
+  PRODUCTION
+  INVENTORY
+  SALES
+  EXPENSES
+  PAYMENTS
+  SECURITY
+  SYNC
+  ADMIN
+  SYSTEM
+  DAILY_SUMMARY
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  OPENED
+  FAILED
+}
+
+enum SyncStatus {
+  ACCEPTED
+  DUPLICATE
+  REJECTED
+  CONFLICT
+}
+
+enum ImportIssueSeverity {
+  INFO
+  WARNING
+  ERROR
+}
+
+// ───────────────────── Identity & security ─────────────────────
+
+model User {
+  id             String     @id @default(uuid()) @db.Uuid
+  email          String     @unique // always stored lower-case; lower(email) unique index in constraints migration
+  passwordHash   String?
+  status         UserStatus @default(INVITED)
+  emailVerified  Boolean    @default(false)
+  mfaEnabled     Boolean    @default(false)
+  failedAttempts Int        @default(0)
+  lockedUntil    DateTime?  @db.Timestamptz
+  tokenVersion   Int        @default(0)
+  lastLoginAt    DateTime?  @db.Timestamptz
+  createdAt      DateTime   @default(now()) @db.Timestamptz
+  updatedAt      DateTime   @updatedAt @db.Timestamptz
+  deletedAt      DateTime?  @db.Timestamptz
+
+  profile                 Profile?
+  roles                   UserRole[]
+  sessions                Session[]
+  mfaSecret               MfaSecret?
+  recoveryCodes           RecoveryCode[]
+  emailTokens             EmailToken[]
+  devices                 NotificationDevice[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
+  auditLogs               AuditLog[]
+
+  @@index([status])
+}
+
+model Profile {
+  userId    String   @id @db.Uuid
+  fullName  String
+  phone     String?
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  mfaRequired Boolean  @default(false)
+  createdAt   DateTime @default(now()) @db.Timestamptz
+
+  permissions RolePermission[]
+  users       UserRole[]
+}
+
+model Permission {
+  id          String  @id @default(uuid()) @db.Uuid
+  code        String  @unique // e.g. sales.create
+  description String?
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model UserRole {
+  userId String @db.Uuid
+  roleId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  familyId         String    @db.Uuid
+  refreshTokenHash String    @unique
+  deviceName       String?
+  platform         String?
+  ip               String?
+  userAgent        String?
+  createdAt        DateTime  @default(now()) @db.Timestamptz
+  lastUsedAt       DateTime  @default(now()) @db.Timestamptz
+  expiresAt        DateTime  @db.Timestamptz
+  revokedAt        DateTime? @db.Timestamptz
+  revokedReason    String?
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+model MfaSecret {
+  userId          String    @id @db.Uuid
+  secretEncrypted String
+  confirmedAt     DateTime? @db.Timestamptz
+  lastUsedStep    Int? // last accepted TOTP time-step: blocks code replay
+  createdAt       DateTime  @default(now()) @db.Timestamptz
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RecoveryCode {
+  id       String    @id @default(uuid()) @db.Uuid
+  userId   String    @db.Uuid
+  codeHash String
+  usedAt   DateTime? @db.Timestamptz
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model EmailToken {
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String         @db.Uuid
+  type      EmailTokenType
+  tokenHash String         @unique
+  expiresAt DateTime       @db.Timestamptz
+  usedAt    DateTime?      @db.Timestamptz
+  createdAt DateTime       @default(now()) @db.Timestamptz
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+}
+
+// ───────────────────────── Farm ─────────────────────────
+
+model Farm {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  coops                 Coop[]
+  productionRecords     ProductionRecord[]
+  inventoryTransactions InventoryTransaction[]
+  inventoryBalances     InventoryBalance[]
+  sales                 Sale[]
+  expenses              Expense[]
+}
+
+model Coop {
+  id        String    @id @default(uuid()) @db.Uuid
+  farmId    String    @db.Uuid
+  name      String
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+  farm      Farm      @relation(fields: [farmId], references: [id])
+
+  productionRecords ProductionRecord[]
+
+  @@unique([farmId, name])
+}
+
+model Shift {
+  id        String  @id @default(uuid()) @db.Uuid
+  code      String  @unique // MORNING | AFTERNOON | EVENING
+  name      String
+  sortOrder Int
+  active    Boolean @default(true)
+
+  productionRecords ProductionRecord[]
+}
+
+// ───────────────────── Catalog & pricing ─────────────────────
+
+model Product {
+  id        String    @id @default(uuid()) @db.Uuid
+  code      String    @unique
+  name      String
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  units                 ProductUnit[]
+  inventoryTransactions InventoryTransaction[]
+  inventoryBalances     InventoryBalance[]
+  saleItems             SaleItem[]
+}
+
+// Conversion source of truth: eggsPerUnit (EGG=1, CRATE=30, CARTON=360).
+model ProductUnit {
+  id          String  @id @default(uuid()) @db.Uuid
+  productId   String  @db.Uuid
+  code        String // EGG | CRATE | CARTON
+  name        String
+  eggsPerUnit Int
+  product     Product @relation(fields: [productId], references: [id])
+
+  prices            Price[]
+  productionEntries ProductionEntry[]
+  saleItems         SaleItem[]
+
+  @@unique([productId, code])
+}
+
+// Append-only price history; never updated in place.
+model Price {
+  id            String      @id @default(uuid()) @db.Uuid
+  productUnitId String      @db.Uuid
+  amount        Decimal     @db.Decimal(14, 2)
+  effectiveFrom DateTime    @db.Timestamptz
+  effectiveTo   DateTime?   @db.Timestamptz
+  changedById   String?     @db.Uuid
+  reason        String?
+  createdAt     DateTime    @default(now()) @db.Timestamptz
+  productUnit   ProductUnit @relation(fields: [productUnitId], references: [id])
+
+  @@index([productUnitId, effectiveFrom(sort: Desc)])
+}
+
+// ───────────────────────── Production ─────────────────────────
+
+model ProductionRecord {
+  id             String       @id @default(uuid()) @db.Uuid
+  farmId         String       @db.Uuid
+  coopId         String       @db.Uuid
+  shiftId        String       @db.Uuid
+  productionDate DateTime     @db.Date
+  totalEggs      Int
+  status         RecordStatus @default(ACTIVE)
+  version        Int          @default(1)
+  notes          String?
+  recordedById   String?      @db.Uuid
+  clientId       String?      @unique @db.Uuid
+  sourceRef      String?      @unique // migration lineage: "Daily Egg Report!B5:D5"
+  needsReview    Boolean      @default(false)
+  createdAt      DateTime     @default(now()) @db.Timestamptz
+  updatedAt      DateTime     @updatedAt @db.Timestamptz
+
+  farm    Farm              @relation(fields: [farmId], references: [id])
+  coop    Coop              @relation(fields: [coopId], references: [id])
+  shift   Shift             @relation(fields: [shiftId], references: [id])
+  entries ProductionEntry[]
+
+  // One active record per coop/date/shift is enforced by a partial unique index (see constraints migration).
+  @@index([coopId, productionDate(sort: Desc)])
+  @@index([productionDate])
+}
+
+model ProductionEntry {
+  id            String @id @default(uuid()) @db.Uuid
+  recordId      String @db.Uuid
+  productUnitId String @db.Uuid
+  quantity      Int
+  baseEggs      Int
+
+  record      ProductionRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  productUnit ProductUnit      @relation(fields: [productUnitId], references: [id])
+
+  @@index([recordId])
+}
+
+// ───────────────────────── Inventory ─────────────────────────
+
+// Append-only ledger. quantityEggs is signed (+in / −out).
+model InventoryTransaction {
+  id           String          @id @default(uuid()) @db.Uuid
+  farmId       String          @db.Uuid
+  productId    String          @db.Uuid
+  type         InventoryTxType
+  quantityEggs Int
+  occurredAt   DateTime        @db.Timestamptz
+  sourceType   String?
+  sourceId     String?         @db.Uuid
+  reason       String?
+  createdById  String?         @db.Uuid
+  clientId     String?         @unique @db.Uuid
+  sourceRef    String?         @unique
+  needsReview  Boolean         @default(false)
+  createdAt    DateTime        @default(now()) @db.Timestamptz
+
+  farm    Farm    @relation(fields: [farmId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([productId, occurredAt(sort: Desc)])
+  @@index([sourceType, sourceId])
+}
+
+model InventoryBalance {
+  farmId       String   @db.Uuid
+  productId    String   @db.Uuid
+  quantityEggs Int      @default(0)
+  updatedAt    DateTime @updatedAt @db.Timestamptz
+  farm         Farm     @relation(fields: [farmId], references: [id])
+  product      Product  @relation(fields: [productId], references: [id])
+
+  @@id([farmId, productId])
+}
+
+// ───────────────────── Customers, sales, payments ─────────────────────
+
+model Customer {
+  id            String       @id @default(uuid()) @db.Uuid
+  name          String
+  phone         String?
+  email         String?
+  address       String?
+  type          CustomerType @default(REGULAR)
+  creditAllowed Boolean      @default(false)
+  creditLimit   Decimal      @default(0) @db.Decimal(14, 2)
+  notes         String?
+  version       Int          @default(1)
+  clientId      String?      @unique @db.Uuid
+  createdAt     DateTime     @default(now()) @db.Timestamptz
+  updatedAt     DateTime     @updatedAt @db.Timestamptz
+  deletedAt     DateTime?    @db.Timestamptz
+
+  sales    Sale[]
+  payments Payment[]
+
+  @@index([name])
+  @@index([phone])
+}
+
+model Sale {
+  id            String        @id @default(uuid()) @db.Uuid
+  farmId        String        @db.Uuid
+  number        String        @unique
+  customerId    String?       @db.Uuid // null = walk-in
+  saleDate      DateTime      @db.Date
+  subtotal      Decimal       @db.Decimal(14, 2)
+  discount      Decimal       @default(0) @db.Decimal(14, 2)
+  total         Decimal       @db.Decimal(14, 2)
+  paidAmount    Decimal       @default(0) @db.Decimal(14, 2)
+  paymentStatus PaymentStatus
+  status        RecordStatus  @default(ACTIVE)
+  notes         String?
+  createdById   String?       @db.Uuid
+  clientId      String?       @unique @db.Uuid
+  sourceRef     String?       @unique
+  needsReview   Boolean       @default(false)
+  createdAt     DateTime      @default(now()) @db.Timestamptz
+  voidedAt      DateTime?     @db.Timestamptz
+  voidReason    String?
+
+  farm     Farm       @relation(fields: [farmId], references: [id])
+  customer Customer?  @relation(fields: [customerId], references: [id])
+  items    SaleItem[]
+  payments Payment[]
+
+  @@index([saleDate])
+  @@index([customerId])
+  @@index([paymentStatus])
+}
+
+model SaleItem {
+  id            String  @id @default(uuid()) @db.Uuid
+  saleId        String  @db.Uuid
+  productId     String  @db.Uuid
+  productUnitId String  @db.Uuid
+  quantity      Int
+  baseEggs      Int
+  unitPrice     Decimal @db.Decimal(14, 2) // price used at time of sale
+  lineTotal     Decimal @db.Decimal(14, 2)
+
+  sale        Sale        @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product     Product     @relation(fields: [productId], references: [id])
+  productUnit ProductUnit @relation(fields: [productUnitId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+model Payment {
+  id           String        @id @default(uuid()) @db.Uuid
+  saleId       String?       @db.Uuid
+  customerId   String?       @db.Uuid
+  amount       Decimal       @db.Decimal(14, 2)
+  method       PaymentMethod @default(CASH)
+  paidAt       DateTime      @db.Timestamptz
+  receivedById String?       @db.Uuid
+  reference    String?
+  clientId     String?       @unique @db.Uuid
+  status       RecordStatus  @default(ACTIVE)
+  createdAt    DateTime      @default(now()) @db.Timestamptz
+
+  sale     Sale?     @relation(fields: [saleId], references: [id])
+  customer Customer? @relation(fields: [customerId], references: [id])
+
+  @@index([saleId])
+  @@index([customerId])
+  @@index([paidAt])
+}
+
+// ───────────────────────── Expenses ─────────────────────────
+
+model ExpenseCategory {
+  id        String    @id @default(uuid()) @db.Uuid
+  code      String    @unique
+  name      String
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0)
+  expenses  Expense[]
+}
+
+model Supplier {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  phone     String?
+  notes     String?
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+  expenses  Expense[]
+
+  @@index([name])
+}
+
+model Expense {
+  id            String        @id @default(uuid()) @db.Uuid
+  farmId        String        @db.Uuid
+  categoryId    String        @db.Uuid
+  supplierId    String?       @db.Uuid
+  description   String
+  quantity      Decimal?      @db.Decimal(14, 3)
+  unitCost      Decimal?      @db.Decimal(14, 2)
+  total         Decimal       @db.Decimal(14, 2)
+  expenseDate   DateTime?     @db.Date // null only for migrated undated rows flagged for review
+  paymentMethod PaymentMethod @default(CASH)
+  notes         String?
+  originalText  String? // migration: verbatim workbook text
+  status        RecordStatus  @default(ACTIVE)
+  needsReview   Boolean       @default(false)
+  recordedById  String?       @db.Uuid
+  clientId      String?       @unique @db.Uuid
+  sourceRef     String?       @unique
+  version       Int           @default(1)
+  createdAt     DateTime      @default(now()) @db.Timestamptz
+  updatedAt     DateTime      @updatedAt @db.Timestamptz
+  deletedAt     DateTime?     @db.Timestamptz
+
+  farm        Farm            @relation(fields: [farmId], references: [id])
+  category    ExpenseCategory @relation(fields: [categoryId], references: [id])
+  supplier    Supplier?       @relation(fields: [supplierId], references: [id])
+  attachments Attachment[]
+
+  @@index([expenseDate])
+  @@index([categoryId, expenseDate])
+  @@index([supplierId])
+}
+
+model Attachment {
+  id           String   @id @default(uuid()) @db.Uuid
+  expenseId    String?  @db.Uuid
+  storageKey   String
+  contentType  String
+  sizeBytes    Int
+  uploadedById String?  @db.Uuid
+  createdAt    DateTime @default(now()) @db.Timestamptz
+  expense      Expense? @relation(fields: [expenseId], references: [id])
+
+  @@index([expenseId])
+}
+
+// Physical cash counts ("money at hand" in the workbook). Cash flow itself is derived, never typed.
+model CashCount {
+  id          String   @id @default(uuid()) @db.Uuid
+  countDate   DateTime @db.Date
+  amount      Decimal  @db.Decimal(14, 2)
+  countedById String?  @db.Uuid
+  sourceRef   String?  @unique
+  createdAt   DateTime @default(now()) @db.Timestamptz
+
+  @@index([countDate])
+}
+
+// ───────────────────── Notifications ─────────────────────
+
+model Notification {
+  id         String               @id @default(uuid()) @db.Uuid
+  userId     String               @db.Uuid
+  category   NotificationCategory
+  type       String
+  title      String
+  body       String
+  entityType String?
+  entityId   String?              @db.Uuid
+  readAt     DateTime?            @db.Timestamptz
+  createdAt  DateTime             @default(now()) @db.Timestamptz
+  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deliveries NotificationDelivery[]
+
+  @@index([userId, readAt, createdAt(sort: Desc)])
+}
+
+model NotificationDelivery {
+  id             String         @id @default(uuid()) @db.Uuid
+  notificationId String         @db.Uuid
+  deviceId       String?        @db.Uuid
+  status         DeliveryStatus @default(PENDING)
+  ticketId       String?
+  error          String?
+  sentAt         DateTime?      @db.Timestamptz
+  deliveredAt    DateTime?      @db.Timestamptz
+  openedAt       DateTime?      @db.Timestamptz
+  notification   Notification   @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId])
+  @@index([status])
+}
+
+model NotificationPreference {
+  userId   String               @db.Uuid
+  category NotificationCategory
+  enabled  Boolean              @default(true)
+  user     User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, category])
+}
+
+model NotificationDevice {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  pushToken  String   @unique
+  platform   String
+  deviceName String?
+  lastSeenAt DateTime @default(now()) @db.Timestamptz
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ───────────────────── Audit, settings, sync, import ─────────────────────
+
+// Append-only: UPDATE/DELETE are blocked by trigger (constraints migration).
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  seq        BigInt   @unique @default(autoincrement()) // insertion order (chain order); timestamps can tie
+  userId     String?  @db.Uuid
+  userName   String?
+  action     String
+  entityType String?
+  entityId   String?
+  before     Json?
+  after      Json?
+  reason     String?
+  ip         String?
+  deviceInfo String?
+  requestId  String?
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  prevHash   String?
+  hash       String?
+  user       User?    @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  version   Int      @default(1)
+  updatedBy String?  @db.Uuid
+  updatedAt DateTime @updatedAt @db.Timestamptz
+}
+
+// Idempotency ledger for offline sync operations.
+model SyncOperation {
+  clientId   String     @id @db.Uuid
+  userId     String     @db.Uuid
+  deviceId   String?
+  entityType String
+  status     SyncStatus
+  result     Json?
+  attempts   Int        @default(1)
+  createdAt  DateTime   @default(now()) @db.Timestamptz
+  updatedAt  DateTime   @default(now()) @updatedAt @db.Timestamptz
+
+  @@index([userId, createdAt])
+}
+
+model ImportBatch {
+  id           String    @id @default(uuid()) @db.Uuid
+  sourceFile   String
+  sourceSha256 String
+  dryRun       Boolean
+  summary      Json
+  startedAt    DateTime  @default(now()) @db.Timestamptz
+  finishedAt   DateTime? @db.Timestamptz
+
+  issues ImportIssue[]
+}
+
+model ImportIssue {
+  id       String              @id @default(uuid()) @db.Uuid
+  batchId  String              @db.Uuid
+  severity ImportIssueSeverity
+  sheet    String
+  cell     String?
+  code     String
+  message  String
+  original String?
+  batch    ImportBatch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId, severity])
+}

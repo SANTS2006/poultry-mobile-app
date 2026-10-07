@@ -1,0 +1,59 @@
+name: backend-ci
+on:
+  push:
+    paths: ['backend/**', 'mobile/**', 'migration/source/**', '.github/workflows/backend-ci.yml']
+  pull_request:
+    paths: ['backend/**', 'mobile/**', 'migration/source/**', '.github/workflows/backend-ci.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: makarifor_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/makarifor_test
+      DIRECT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/makarifor_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma validate
+      - name: Migrations match schema.prisma (no drift)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -c 'CREATE DATABASE makarifor_shadow'
+          npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url postgresql://postgres:postgres@localhost:5432/makarifor_shadow --exit-code
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Mobile sync code — strict TypeScript
+        run: npm run typecheck:mobile
+      - name: Unit tests
+        run: npm test
+      - name: Mobile sync engine tests (real SQLite via node:sqlite)
+        run: NODE_OPTIONS="--experimental-sqlite --no-warnings" npm run test:mobile
+      - name: Integration/security tests (real PostgreSQL)
+        run: npm run test:e2e
+      - name: Dependency audit (fail on high/critical)
+        run: npm audit --omit=dev --audit-level=high
+      - name: Build
+        run: npm run build

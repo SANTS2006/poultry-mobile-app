@@ -1,0 +1,66 @@
+severity,needs_manual_review,sheet,cell,code,message,original
+WARNING,yes,Expenditure,Expenditure!C29,CASH_BALANCE_NOTE,"""money at hand"" 26020 (2026-06-27) is a cash balance, not an expense; not imported. Whether it is a physical count is business question Q7",money at hand = 26020
+WARNING,yes,Expenditure,Expenditure!C34,CASH_BALANCE_NOTE,"""money at hand"" 13300 (2026-07-13) is a cash balance, not an expense; not imported. Whether it is a physical count is business question Q7",money at hand = 13300
+WARNING,yes,Sheet1,AB:AC,CASH_COLUMN_NOT_IMPORTED,"""Cash Remaining"" (AC) and the unlabelled running column (AB) are not imported: 7 different formula shapes and 1 typed value(s) (AC24). Cash flow is recomputed from sales and expenses instead.",
+WARNING,yes,Sheet1,J23,CRATE_PRICE_DERIVED,"Crates on 2026-07-04 were priced by hand in the workbook (775 for 6 crates); the crate price is not defined anywhere else (Sheet2 uses 125, pro-rata would be 129.17). See business question Q2",(15*1550)+775
+WARNING,yes,Expenditure,Expenditure!C19,EXPENDITURE_LINE_NO_AMOUNT,"""Marie - Dept"" has no amount; not imported (amount cannot be invented)",Marie - Dept
+WARNING,yes,Expenditure,Expenditure!C4,EXPENDITURE_UNDATED,"""Concentrate"" 11200 has no date (same amount as Sheet1!L14 on 2026-06-26 — if it is that purchase it is a duplicate); not imported",Concentrate = 11200
+WARNING,yes,Expenditure,Expenditure!C5,EXPENDITURE_UNDATED,"""Top up Brigadier"" 200 has no date (same amount as Sheet1!L27 on 2026-07-08 — if it is that purchase it is a duplicate); not imported",Top up Brigadier = 200
+WARNING,yes,Expenditure,Expenditure!C6,EXPENDITURE_UNDATED,"""Nail"" 100 has no date (same amount as Sheet1!Z29#2 on 2026-07-10 — if it is that purchase it is a duplicate); not imported",Nail = 100
+WARNING,yes,Expenditure,Expenditure!C7,EXPENDITURE_UNDATED,"""Fuel to transport concentrate"" 70 has no date; not imported",Fuel to transport concentrate = 70
+WARNING,yes,Expenditure,Expenditure!C8,EXPENDITURE_UNDATED,"""Cartoon eggs for Brigadier"" 4500 has no date; not imported",Cartoon eggs for Brigadier = 4500
+WARNING,yes,Expenditure,Expenditure!C10,EXPENDITURE_UNMATCHED,"""Paid debt to Mr Ibrahim"" 14000 on 2026-06-20 is not in Sheet1 for that date. Not imported (could be a missing entry or a different figure); please decide",Paid debt to Mr Ibrahim = 14000
+WARNING,yes,Expenditure,Expenditure!C14,EXPENDITURE_UNMATCHED,"""board"" 720 on 2026-06-20 is not in Sheet1 for that date. Not imported (could be a missing entry or a different figure); please decide",board = 720
+WARNING,yes,Expenditure,Expenditure!C15,EXPENDITURE_UNMATCHED,"""Mr Hassan"" 1000 on 2026-06-20 is not in Sheet1 for that date. Not imported (could be a missing entry or a different figure); please decide",Mr Hassan = 1000
+WARNING,yes,Expenditure,Expenditure!C18,EXPENDITURE_UNMATCHED,"""Mr Hassan for Fan"" 3000 on 2026-06-21 is not in Sheet1 for that date. Not imported (could be a missing entry or a different figure); please decide",Mr Hassan for Fan = 3000
+WARNING,yes,Expenditure,Expenditure!C24,EXPENDITURE_UNMATCHED,"""crates"" 600 on 2026-06-27 is not in Sheet1 for that date. Not imported (could be a missing entry or a different figure); please decide",crates = 600
+WARNING,yes,Expenditure,Expenditure!C26,EXPENDITURE_UNMATCHED,"""Baba"" 3000 on 2026-06-27 is not in Sheet1 for that date. Not imported (could be a missing entry or a different figure); please decide",Baba = 3000
+WARNING,yes,Sheet1,AA20,EXPENSE_TOTAL_MISMATCH,"2026-07-01: workbook ""Total Expenses"" is 16000 but the line items add up to 21000 (difference 5000). The importer uses the line items.",L20+R20+V20
+WARNING,yes,Sheet1,AA29,EXPENSE_TOTAL_MISMATCH,"2026-07-10: workbook ""Total Expenses"" is 1970 but the line items add up to 2370 (difference 400). The importer uses the line items.",Z29+V29
+WARNING,yes,Sheet1,,NEGATIVE_STOCK_ON_DATE,"Recorded sales exceed recorded production by up to 7751 eggs (worst on 2026-07-04), so at least 7751 eggs must have been in stock on 2026-06-17 before the first entry. The opening stock is not in the workbook and is not invented; supply it with --opening-stock once known (business question Q3)",
+WARNING,yes,Sheet1,Sheet1!B:D (2026-06-21),PRODUCTION_SOURCE_CONFLICT,2026-06-21: Sheet1 says 3145 eggs produced but Daily Egg Report (per coop and shift) says 2065 (difference 1080). Daily Egg Report was imported.,
+WARNING,yes,Sheet2,G5,SALES_SOURCE_CONFLICT,"2026-06-17: Sheet1 = 1440 eggs / 6200; Sheet2 = 1620 eggs (4 cartons + 6 crates) / 6750 (Sheet2 unit prices: 1500 per carton, 125 per crate). Sheet1 was imported and flagged; Sheet2 was not.",
+WARNING,yes,Sheet2,G6,SALES_SOURCE_CONFLICT,"2026-06-18: Sheet1 = 1800 eggs / 7750; Sheet2 = 1800 eggs (5 cartons + 0 crates) / 7500 (Sheet2 unit prices: 1500 per carton, 125 per crate). Sheet1 was imported and flagged; Sheet2 was not.",
+WARNING,yes,Sheet2,G7,SALES_SOURCE_CONFLICT,"2026-06-19: Sheet1 = 3240 eggs / 13950; Sheet2 = 3240 eggs (9 cartons + 0 crates) / 13500 (Sheet2 unit prices: 1500 per carton, 125 per crate). Sheet1 was imported and flagged; Sheet2 was not.",
+WARNING,yes,Sheet2,G8,SALES_SOURCE_CONFLICT,"2026-06-20: Sheet1 = 1800 eggs / 7750; Sheet2 = 1800 eggs (5 cartons + 0 crates) / 7500 (Sheet2 unit prices: 1500 per carton, 125 per crate). Sheet1 was imported and flagged; Sheet2 was not.",
+WARNING,yes,Sheet2,G9,SALES_SOURCE_CONFLICT,"2026-06-21: Sheet1 = 720 eggs / 3100; Sheet2 = 720 eggs (2 cartons + 0 crates) / 3000 (Sheet2 unit prices: 1500 per carton, 125 per crate). Sheet1 was imported and flagged; Sheet2 was not.",
+WARNING,yes,Sheet1,G23,TEXT_QUANTITY_PARSED,"Quantity ""15 + 6 Crates"" on 2026-07-04 read as 15 cartons + 6 crates",15 + 6 Crates
+WARNING,yes,Sheet1,,UNACCOUNTED_STOCK,"Production (95423) minus sales (78300) leaves 17123 eggs that no sheet accounts for (unrecorded sales, breakage, own use, or physical stock). The system will show this as stock; a person must confirm and post an adjustment. See business question Q3",
+INFO,no,Sheet1,Sheet1!F,EMPTY_COLUMN,"Column ""CEO/Visitors"" contains no data",
+INFO,no,Daily Egg Report,,EMPTY_TEMPLATE_ROWS,5 dated rows with no production entered (future dates) were skipped,
+INFO,no,Expenditure,Expenditure!C11,EXPENDITURE_DUPLICATE_OF_SHEET1,"""condiment"" 280 on 2026-06-20 matches Sheet1!L8; skipped to avoid double-counting",
+INFO,no,Expenditure,Expenditure!C12,EXPENDITURE_DUPLICATE_OF_SHEET1,"""crate"" 350 on 2026-06-20 matches Sheet1!T8; skipped to avoid double-counting",
+INFO,no,Expenditure,Expenditure!C13,EXPENDITURE_DUPLICATE_OF_SHEET1,"""transportation for corn"" 1500 on 2026-06-20 matches Sheet1!N8; skipped to avoid double-counting",
+INFO,no,Expenditure,Expenditure!C16,EXPENDITURE_DUPLICATE_OF_SHEET1,"""loading corn in the vehicle"" 150 on 2026-06-20 matches Sheet1!P8; skipped to avoid double-counting",
+INFO,no,Expenditure,Expenditure!C21,EXPENDITURE_DUPLICATE_OF_SHEET1,"""General MBS"" 5500 on 2026-06-27 matches Sheet1!Z15; skipped to avoid double-counting",
+INFO,no,Expenditure,Expenditure!C22,EXPENDITURE_DUPLICATE_OF_SHEET1,"""emmanuel Welder"" 3500 on 2026-06-27 matches Sheet1!P15#1; skipped to avoid double-counting",
+INFO,no,Expenditure,Expenditure!C23,EXPENDITURE_DUPLICATE_OF_SHEET1,"""foday kaile"" 6350 on 2026-06-27 matches Sheet1!P15#2; skipped to avoid double-counting",
+INFO,no,Expenditure,Expenditure!C25,EXPENDITURE_DUPLICATE_OF_SHEET1,"""Mr Yusif funeral"" 500 on 2026-06-27 matches Sheet1!P15#3; skipped to avoid double-counting",
+INFO,no,Expenditure,Expenditure!C27,EXPENDITURE_DUPLICATE_OF_SHEET1,"""Musa, Nabiellie"" 400 on 2026-06-27 matches Sheet1!P15#5; skipped to avoid double-counting",
+INFO,no,Expenditure,Expenditure!C31,EXPENDITURE_DUPLICATE_OF_SHEET1,"""baba"" 1000 on 2026-07-13 matches Sheet1!Z32; skipped to avoid double-counting",
+INFO,no,Expenditure,Expenditure!C32,EXPENDITURE_DUPLICATE_OF_SHEET1,"""crate"" 1050 on 2026-07-13 matches Sheet1!T32; skipped to avoid double-counting",
+INFO,no,Expenditure,Expenditure!C35,EXPENDITURE_DUPLICATE_OF_SHEET1,"Income line ""sales"" 10850 on 2026-07-14 equals the Sheet1 sale; skipped",
+INFO,no,Expenditure,Expenditure!C36,EXPENDITURE_DUPLICATE_OF_SHEET1,"""Mr Bendu"" 1500 on 2026-07-14 matches Sheet1!Z33; skipped to avoid double-counting",
+INFO,no,Expenditure,Expenditure!C37,EXPENDITURE_DUPLICATE_OF_SHEET1,"""condiment"" 300 on 2026-07-14 matches Sheet1!L33; skipped to avoid double-counting",
+INFO,no,Sheet1,P15,EXPENSE_SPLIT,Cell held 5 items whose amounts add up exactly; imported as 5 expenses,"Emmanuel Welder (le3,500), Foday Kalie (le6,350), Mr Usiff funeral (le500) Baba (le3,500), Musa, Nabiella & others (le 400)"
+INFO,no,Sheet1,Z18,EXPENSE_SPLIT,Cell held 2 items whose amounts add up exactly; imported as 2 expenses,"Abu Kamara (le 5,000), Neneh (le 300"
+INFO,no,Sheet1,V20,EXPENSE_SPLIT,Cell held 2 items whose amounts add up exactly; imported as 2 expenses,"Feeders (le300*13), Bike Tire (le500)"
+INFO,no,Sheet1,Z23,EXPENSE_SPLIT,Cell held 2 items whose amounts add up exactly; imported as 2 expenses,"Ishmail (le1,500), Loan (le500)"
+INFO,no,Sheet1,Z24,EXPENSE_SPLIT,Cell held 2 items whose amounts add up exactly; imported as 2 expenses,"Abu Kamara (le3,000), Abass, Luthy & Musa (le600)"
+INFO,no,Sheet1,Z26,EXPENSE_SPLIT,Cell held 2 items whose amounts add up exactly; imported as 2 expenses,"Abu Kamara  (le2,000), mamy I (le5,000"
+INFO,no,Sheet1,L28,EXPENSE_SPLIT,Cell held 2 items whose amounts add up exactly; imported as 2 expenses,"Corn (Mr Ibrahim(le 40,000) & Concentrate (le 1,400*8)"
+INFO,no,Sheet1,Z29,EXPENSE_SPLIT,Cell held 2 items whose amounts add up exactly; imported as 2 expenses,Board 4 Net(le125*14) & Top up 4 Cameras (le100)
+INFO,no,Sheet1,Z31,EXPENSE_SPLIT,Cell held 2 items whose amounts add up exactly; imported as 2 expenses,"Baba (le1,300) & Chief Foday(le 1,000)"
+INFO,no,Sheet1,Z34,EXPENSE_SPLIT,Cell held 2 items whose amounts add up exactly; imported as 2 expenses,"Gen MBS (le2,500) & Mohamed Bah (le500)"
+INFO,no,Sheet1,Z37,EXPENSE_SPLIT,Cell held 6 items whose amounts add up exactly; imported as 6 expenses,"Gen MBS (le1,000), Baba (le2,500), Abass (le500), Chernor (le500), Sheku (le300), Top up 4 Camera (le100)"
+INFO,no,Sheet1,V39,EXPENSE_SPLIT,Cell held 2 items whose amounts add up exactly; imported as 2 expenses,"Diesel-5 ltrs(le175), Fuel 4 bike 2 ltrs (le66)"
+INFO,no,Sheet1,Z39,EXPENSE_SPLIT,Cell held 2 items whose amounts add up exactly; imported as 2 expenses,"Mr Abu Kamara (le3,000), S/stg Kanneh (le4,000)"
+INFO,no,Sheet1,T40,EXPENSE_SPLIT,Cell held 2 items whose amounts add up exactly; imported as 2 expenses,"Cartoon (le20*24), Crate (le350*3"
+INFO,no,Sheet1,Z41,EXPENSE_SPLIT,Cell held 2 items whose amounts add up exactly; imported as 2 expenses,"Marie Kamara (le1,000), thaimu (le500"
+INFO,no,Sheet1,,HARDCODED_TOTALS,"Typed numbers sit where formulas belong: AA25, AA31, AA40. Line items are used instead of these totals.",
+INFO,no,Daily Egg Report,Daily Egg Report!H:J31,SHIFT_NOT_RECORDED,Coop 1 evening on 2026-07-13 is blank (not the same as an entered 0); no record created,
+INFO,no,Daily Egg Report,Daily Egg Report!R:T31,SHIFT_NOT_RECORDED,Coop 2 evening on 2026-07-13 is blank (not the same as an entered 0); no record created,
+INFO,no,Daily Egg Report,Daily Egg Report!AB:AD31,SHIFT_NOT_RECORDED,Coop 3 evening on 2026-07-13 is blank (not the same as an entered 0); no record created,
+INFO,no,Sheet1,H5,STOCK_NOTE_IGNORED,"Free-text ""Stock"" note ""5"" on 2026-06-17 has no defined meaning and was not used",5
+INFO,no,Sheet1,H21,STOCK_NOTE_IGNORED,"Free-text ""Stock"" note ""4 Crate"" on 2026-07-02 has no defined meaning and was not used",4 Crate
+INFO,no,Daily Egg Report,,UNNORMALISED_UNITS,1 cells hold more crates than a carton or more singles than a crate; totals are unaffected because everything is stored as eggs,

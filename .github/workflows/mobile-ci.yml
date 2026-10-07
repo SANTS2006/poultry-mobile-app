@@ -1,0 +1,39 @@
+name: mobile-ci
+on:
+  push:
+    paths: ['mobile/**', '.github/workflows/mobile-ci.yml']
+  pull_request:
+    paths: ['mobile/**', '.github/workflows/mobile-ci.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      EXPO_PUBLIC_API_URL: https://api.example.invalid
+      EXPO_PUBLIC_APP_ENV: staging
+      EXPO_OFFLINE: '1'
+      CI: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: mobile/package-lock.json }
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Lint
+        run: npx eslint .
+      - name: Unit and component tests
+        run: NODE_OPTIONS="--experimental-sqlite --no-warnings" npx jest
+      - name: Dependency audit (production, high+)
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
+      - name: Bundle Android and iOS (proves the whole app compiles)
+        run: |
+          npx expo export --platform android --output-dir /tmp/out-android
+          npx expo export --platform ios --output-dir /tmp/out-ios

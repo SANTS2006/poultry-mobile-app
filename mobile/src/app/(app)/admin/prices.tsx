@@ -1,0 +1,46 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { Alert } from 'react-native';
+import type { Unit } from '../../../api/types';
+import { describeError } from '../../../lib/errors';
+import { formatDateTime, formatMoney, isMoneyInput } from '../../../lib/format';
+import { useEndpoints } from '../../../state/app';
+import { Button, Card, ErrorView, Field, Loading, Screen, SectionTitle, Segmented, Text } from '../../../ui/components';
+import { ReasonModal } from '../../../ui/reason-modal';
+
+const UNITS: { value: Unit; label: string }[] = [{ value: 'CARTON', label: 'Carton (360)' }, { value: 'CRATE', label: 'Crate (30)' }, { value: 'EGG', label: 'Single egg' }];
+
+/** Prices are append-only: a new price closes the old one; past sales keep the price they were sold at. */
+export default function Prices() {
+  const api = useEndpoints();
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['admin', 'prices'], queryFn: () => api.prices() });
+  const [unit, setUnit] = useState<Unit>('CRATE');
+  const [amount, setAmount] = useState('');
+  const [asking, setAsking] = useState(false);
+  const current = (u: Unit) => q.data?.find((p) => p.unit === u && p.effectiveTo === null);
+
+  async function save(reason: string) {
+    try {
+      await api.setPrice(unit, amount.trim(), reason);
+      setAsking(false); setAmount('');
+      await qc.invalidateQueries({ queryKey: ['admin', 'prices'] });
+      Alert.alert('Price saved', 'New sales use it straight away. Phones pick it up the next time they sync.');
+    } catch (e) { setAsking(false); Alert.alert('Could not save the price', describeError(e)); }
+  }
+
+  return (
+    <Screen refreshing={q.isRefetching} onRefresh={() => void q.refetch()}>
+      {q.isLoading ? <Loading /> : null}
+      {q.error ? <ErrorView message={describeError(q.error)} onRetry={() => void q.refetch()} /> : null}
+      {UNITS.map((u) => <Card key={u.value}><Text muted>{u.label}</Text><Text size="title" bold>{current(u.value) ? formatMoney(current(u.value)!.amount) : 'No price set'}</Text></Card>)}
+      <SectionTitle>Set a new price</SectionTitle>
+      <Segmented value={unit} onChange={setUnit} options={UNITS} />
+      <Field label="New price" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" />
+      <Button title="Change price" disabled={!isMoneyInput(amount) || Number(amount) <= 0} onPress={() => setAsking(true)} />
+      <SectionTitle>History</SectionTitle>
+      {q.data?.slice(0, 15).map((p) => <Card key={p.id}><Text bold>{p.unit.toLowerCase()} · {formatMoney(p.amount)}</Text><Text size="small" muted>from {formatDateTime(p.effectiveFrom)}{p.reason ? ` · ${p.reason}` : ''}</Text></Card>)}
+      <ReasonModal visible={asking} title={`Change ${unit.toLowerCase()} price?`} message="The reason is saved in the audit log." confirmLabel="Change price" onCancel={() => setAsking(false)} onConfirm={save} />
+    </Screen>
+  );
+}

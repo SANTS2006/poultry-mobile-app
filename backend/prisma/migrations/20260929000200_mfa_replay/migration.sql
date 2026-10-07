@@ -1,0 +1,1 @@
+ALTER TABLE "MfaSecret" ADD COLUMN "lastUsedStep" INTEGER;
