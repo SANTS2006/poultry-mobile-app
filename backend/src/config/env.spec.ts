@@ -16,6 +16,11 @@ describe('parseEnv', () => {
     expect(env.CORS_ORIGINS).toEqual([]);
   });
 
+  it('treats blank optional enum lines in .env as unset, but still rejects wrong values', () => {
+    expect(parseEnv({ ...base, PUSH_PROVIDER: '', THROTTLE_OFF: '' }).PUSH_PROVIDER).toBeUndefined();
+    expect(() => parseEnv({ ...base, PUSH_PROVIDER: 'smoke-signals' })).toThrow(/PUSH_PROVIDER/);
+  });
+
   it('rejects short or identical JWT secrets', () => {
     expect(() => parseEnv({ ...base, JWT_SECRET: 'short' })).toThrow(/JWT_SECRET/);
     expect(() => parseEnv({ ...base, JWT_REFRESH_SECRET: base.JWT_SECRET })).toThrow(/must differ/);

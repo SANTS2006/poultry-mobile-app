@@ -58,7 +58,10 @@ export type Env = z.infer<typeof schema>;
 
 /** Validates process.env. Error messages name variables but never echo values (secrets). */
 export function parseEnv(raw: Record<string, unknown>): Env {
-  const result = schema.safeParse(raw);
+  // A blank line in .env ("PUSH_PROVIDER=") means "not set", not an invalid empty value.
+  const cleaned = { ...raw };
+  for (const k of ['PUSH_PROVIDER', 'THROTTLE_OFF']) if (cleaned[k] === '') delete cleaned[k];
+  const result = schema.safeParse(cleaned);
   if (!result.success) {
     const lines = result.error.issues.map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`);
     throw new Error(`Invalid environment configuration:\n${lines.join('\n')}`);
