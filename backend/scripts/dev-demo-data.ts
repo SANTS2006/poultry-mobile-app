@@ -1,7 +1,9 @@
 /* DEVELOPMENT ONLY. Creates demo users with a KNOWN password plus a farm, coops, prices, customers and opening stock so the app can be tried at once.
      npm run demo:data              (idempotent)
      npm run demo:data -- --no-mfa  also switches off the mandatory-MFA flag on roles (local convenience; never do this in a real environment)
-   Refuses to run unless APP_ENV=development and the database host is local. */
+     npm run demo:data -- --allow-remote   permit a NON-local database (e.g. a throwaway Neon project/branch used for testing)
+   Always requires APP_ENV=development. Without --allow-remote the database host must also be local. Never point this at real business data:
+   it creates accounts with a publicly known password. */
 import * as argon2 from 'argon2';
 import { Prisma, PrismaClient } from '@prisma/client';
 
@@ -17,9 +19,13 @@ const USERS = [
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL ?? '';
   const host = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
-  if (process.env.APP_ENV !== 'development' || !['localhost', '127.0.0.1', 'db', '::1'].includes(host)) {
-    throw new Error('Refusing to run: demo data is for APP_ENV=development with a local database only.');
+  const local = ['localhost', '127.0.0.1', 'db', '::1'].includes(host);
+  const allowRemote = process.argv.includes('--allow-remote');
+  if (process.env.APP_ENV !== 'development') throw new Error('Refusing to run: demo data needs APP_ENV=development (set it in .env).');
+  if (!local && !allowRemote) {
+    throw new Error(`Refusing to run: the database host "${host}" is not local. If this is a throwaway test database, repeat with:  npm run demo:data -- --no-mfa --allow-remote`);
   }
+  if (!local) process.stdout.write(`WARNING: creating demo accounts with a known password on remote database "${host}". Delete them before real use.\n`);
   const prisma = new PrismaClient();
   try {
     if ((await prisma.role.count()) === 0) throw new Error('Run `npm run db:seed` first.');

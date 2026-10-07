@@ -34,7 +34,7 @@ JWT_REFRESH_SECRET=dev-only-refresh-secret-change-me-0123456789
 DATA_ENCRYPTION_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
 EOF
 npx prisma generate && npx prisma migrate deploy && npm run db:seed
-npm run demo:data -- --no-mfa               # demo users, coops, prices, customers, 5,000 eggs opening stock
+npm run demo:data -- --no-mfa               # (add --allow-remote only for a throwaway Neon test database) demo users, coops, prices, customers, 5,000 eggs opening stock
 npm run start:dev                           # API on port 3000 (listens on all interfaces)
 ```
 Check: `curl localhost:3000/health/ready` → `{"status":"ok"}`. Find the laptop's LAN IP (`ipconfig` / `ifconfig` / `ip addr`), e.g. `192.168.1.25`, and open port 3000 in the laptop firewall.
