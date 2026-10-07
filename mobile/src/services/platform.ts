@@ -21,11 +21,14 @@ export function deviceHeaders(): Record<string, string> {
   return { 'x-device-name': (Device.deviceName ?? Device.modelName ?? 'unknown device').slice(0, 80), 'x-platform': Platform.OS };
 }
 
+export interface OpenedDatabase { driver: SqlDriver; encrypted: boolean }
+
 /**
- * Opens the local database. The file is encrypted with SQLCipher; the random key is generated on first run and kept only in the
- * secure store. (Needs a development or store build: Expo Go does not include SQLCipher.)
+ * Opens the local database. In a development/store build the file is encrypted with SQLCipher; the random key is generated on first run and
+ * kept only in the secure store. Plain SQLite (e.g. Expo Go) silently ignores `PRAGMA key`, so we ASK the engine whether SQLCipher is present
+ * (`PRAGMA cipher_version` answers only under SQLCipher) and report it instead of assuming.
  */
-export async function openEncryptedDatabase(secure: SecureStore, name = 'makarifor.db'): Promise<SqlDriver> {
+export async function openEncryptedDatabase(secure: SecureStore, name = 'makarifor.db'): Promise<OpenedDatabase> {
   let key = await secure.get('db.key');
   if (!key) {
     key = Array.from(Crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
@@ -33,18 +36,25 @@ export async function openEncryptedDatabase(secure: SecureStore, name = 'makarif
   }
   const db = await SQLite.openDatabaseAsync(name);
   await db.execAsync(`PRAGMA key = "x'${key}'"`);
+  const version = await db.getAllAsync<Record<string, unknown>>('PRAGMA cipher_version').catch(() => []);
   await db.execAsync('PRAGMA journal_mode = WAL');
   const params = (p?: (string | number | null)[]) => p ?? [];
   return {
-    async run(sql, p) { await db.runAsync(sql, params(p)); },
-    all<T>(sql: string, p?: (string | number | null)[]) { return db.getAllAsync<T & object>(sql, params(p)) as Promise<T[]>; },
+    encrypted: version.length > 0,
+    driver: {
+      async run(sql, p) { await db.runAsync(sql, params(p)); },
+      all<T>(sql: string, p?: (string | number | null)[]) { return db.getAllAsync<T & object>(sql, params(p)) as Promise<T[]>; },
+    },
   };
 }
 
-export async function openOutbox(secure: SecureStore): Promise<SqliteOutboxStorage> {
-  const storage = new SqliteOutboxStorage(await openEncryptedDatabase(secure));
+export async function openOutbox(secure: SecureStore, requireEncryption: boolean): Promise<{ storage: SqliteOutboxStorage; encrypted: boolean }> {
+  const { driver, encrypted } = await openEncryptedDatabase(secure);
+  // Real builds must never silently fall back to a plain-text database holding financial records.
+  if (requireEncryption && !encrypted) throw new Error('This build cannot encrypt the local database (SQLCipher is missing). Refusing to store business data unencrypted.');
+  const storage = new SqliteOutboxStorage(driver);
   await storage.init();
-  return storage;
+  return { storage, encrypted };
 }
 
 /** Online/offline from the OS network state. "Online" only means a network exists; the sync engine still handles failures. */

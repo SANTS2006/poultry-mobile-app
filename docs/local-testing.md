@@ -1,5 +1,21 @@
 # Run locally and test on a real phone
 
+## Quickest way: Expo Go (no build, no accounts)
+1. Start the API on the laptop (section A below, including `npm run demo:data -- --no-mfa`).
+2. Install **Expo Go** on the phone (Play Store / App Store; it must be a version that supports **SDK 57**).
+3. Laptop and phone on the same Wi-Fi, then:
+   ```bash
+   cd mobile && npm ci
+   npm run go          # detects your LAN IP, checks the API answers, starts Expo and shows a QR code
+   ```
+   Scan the QR code (Android: inside Expo Go; iPhone: the Camera app). Sign in with a demo account (section C).
+   If Wi-Fi blocks the connection: `npm run go -- --tunnel` for the app bundle (the phone still needs to reach the API at the printed address; if it cannot, expose the API with a tunnel such as `ngrok http 3000` and run `API_URL=https://<name>.ngrok-free.app npm run go -- --tunnel`).
+
+**What differs in Expo Go (by design, shown in Settings and on the sign-in screen):** the on-phone database is plain SQLite, not encrypted; remote push notifications are unavailable (in-app notifications work); links such as `makarifor://reset-password` do not open the app (paste the token instead); iPhone Face ID may fall back to the passcode. Production builds refuse to start without database encryption. Everything else (sign-in, MFA, offline recording and sync, sales, reports, admin) runs the same code.
+Status: I verified that the Expo dev server starts and serves an SDK 57 manifest and the Android bundle with your API address inside, and that tests, typecheck and lint pass. I could **not** open it in Expo Go on a phone from here, so the first scan is the real test.
+
+## Full device build (encrypted database, push)
+
 Use the same Wi-Fi for laptop and phone. Commands are for macOS/Linux; on Windows use WSL2 (recommended) or Git Bash.
 
 ## A. Laptop: database + API

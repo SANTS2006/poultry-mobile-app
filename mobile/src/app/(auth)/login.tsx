@@ -6,6 +6,7 @@ import { useApp } from '../../state/app';
 import { useAuthFlow } from '../../state/auth-flow';
 import { Button, Field, Screen, Text } from '../../ui/components';
 import { APP_ENV } from '../../config';
+import { IS_EXPO_GO } from '../../lib/runtime';
 import { space } from '../../ui/theme';
 
 export default function Login() {
@@ -46,6 +47,7 @@ export default function Login() {
         <Button title="Sign in" onPress={() => void submit()} busy={busy} testID="signin" />
         <Button title="Forgot password?" variant="ghost" onPress={() => router.push('/forgot-password')} />
         <Button title="I have an invitation" variant="ghost" onPress={() => router.push('/accept-invite')} />
+        {IS_EXPO_GO ? <Text size="small" muted style={{ textAlign: 'center' }}>Expo Go test mode: local data is not encrypted and push is off.</Text> : null}
         {APP_ENV !== 'production' ? <Text size="small" muted style={{ textAlign: 'center' }}>{APP_ENV} build</Text> : null}
       </KeyboardAvoidingView>
     </Screen>

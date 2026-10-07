@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Switch } from 'react-native';
 import { APP_ENV, APP_VERSION } from '../../../config';
+import { IS_EXPO_GO } from '../../../lib/runtime';
 import { describeError } from '../../../lib/errors';
 import { authenticateLocally, biometricsAvailable } from '../../../services/biometrics';
 import { unregisterPush } from '../../../services/push';
@@ -52,6 +53,12 @@ export default function Settings() {
         <Text bold>{user?.fullName}</Text><Text muted>{user?.email}</Text>
         <Text muted>Two-step sign-in: {user?.mfaEnabled ? 'on' : 'off'}</Text>
       </Card>
+      {IS_EXPO_GO || !services.dbEncrypted ? (
+        <Card tone="warn" style={{ marginHorizontal: 16 }}>
+          <Text bold>{IS_EXPO_GO ? 'Running in Expo Go (testing only)' : 'Local database is not encrypted'}</Text>
+          <Text>{services.dbEncrypted ? '' : 'Records saved on this phone are stored in a plain, unencrypted database. '}Remote push notifications are unavailable. Use a development or store build for real work.</Text>
+        </Card>
+      ) : null}
       <SectionTitle>Security</SectionTitle>
       <ListRow title="Change password" onPress={() => router.push('/settings/password')} right={<Text muted>›</Text>} />
       <ListRow title="Two-step sign-in" subtitle={user?.mfaEnabled ? 'On — manage recovery codes' : 'Off — turn on with an authenticator app'} onPress={() => router.push('/settings/mfa')} right={<Text muted>›</Text>} />

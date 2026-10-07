@@ -1,48 +1,61 @@
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
+import type * as NotificationsModule from 'expo-notifications';
+import { IS_EXPO_GO } from '../lib/runtime';
 import { Platform } from 'react-native';
 import type { Endpoints } from '../api/endpoints';
 
+type Notifications = typeof NotificationsModule;
+/** expo-notifications is loaded lazily and never inside Expo Go (Expo Go removed remote push; importing it there only logs errors). */
+export function loadNotifications(): Notifications | null {
+  if (IS_EXPO_GO) return null;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('expo-notifications') as Notifications;
+}
+
 /** Android notification channels; ids match the ones the server sends (backend/src/notifications/notification.types.ts). */
-const CHANNELS: { id: string; name: string; importance: Notifications.AndroidImportance }[] = [
-  { id: 'production', name: 'Production', importance: Notifications.AndroidImportance.DEFAULT },
-  { id: 'inventory', name: 'Inventory', importance: Notifications.AndroidImportance.DEFAULT },
-  { id: 'sales', name: 'Sales', importance: Notifications.AndroidImportance.DEFAULT },
-  { id: 'expenses', name: 'Expenses', importance: Notifications.AndroidImportance.DEFAULT },
-  { id: 'payments', name: 'Payments', importance: Notifications.AndroidImportance.DEFAULT },
-  { id: 'security', name: 'Security alerts', importance: Notifications.AndroidImportance.HIGH },
-  { id: 'sync', name: 'Sync', importance: Notifications.AndroidImportance.LOW },
-  { id: 'admin', name: 'Administration', importance: Notifications.AndroidImportance.DEFAULT },
-  { id: 'system', name: 'System', importance: Notifications.AndroidImportance.DEFAULT },
-  { id: 'summary', name: 'Daily summary', importance: Notifications.AndroidImportance.LOW },
+const channels = (N: Notifications): { id: string; name: string; importance: NotificationsModule.AndroidImportance }[] => [
+  { id: 'production', name: 'Production', importance: N.AndroidImportance.DEFAULT },
+  { id: 'inventory', name: 'Inventory', importance: N.AndroidImportance.DEFAULT },
+  { id: 'sales', name: 'Sales', importance: N.AndroidImportance.DEFAULT },
+  { id: 'expenses', name: 'Expenses', importance: N.AndroidImportance.DEFAULT },
+  { id: 'payments', name: 'Payments', importance: N.AndroidImportance.DEFAULT },
+  { id: 'security', name: 'Security alerts', importance: N.AndroidImportance.HIGH },
+  { id: 'sync', name: 'Sync', importance: N.AndroidImportance.LOW },
+  { id: 'admin', name: 'Administration', importance: N.AndroidImportance.DEFAULT },
+  { id: 'system', name: 'System', importance: N.AndroidImportance.DEFAULT },
+  { id: 'summary', name: 'Daily summary', importance: N.AndroidImportance.LOW },
 ];
 
 /** Foreground behaviour: show the banner (the app also refreshes its badge through realtime). */
 export function configureForegroundNotifications(): void {
-  Notifications.setNotificationHandler({
+  const N = loadNotifications();
+  if (!N) return;
+  N.setNotificationHandler({
     handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false }),
   });
 }
 
 export type PushRegistration =
   | { ok: true; token: string }
-  | { ok: false; reason: 'not_a_device' | 'permission_denied' | 'no_project_id' | 'error'; detail?: string };
+  | { ok: false; reason: 'expo_go' | 'not_a_device' | 'permission_denied' | 'no_project_id' | 'error'; detail?: string };
 
 /**
  * Asks for permission (only when needed), obtains the Expo push token and registers it with the server for the signed-in user.
  * Push is convenience: everything important is also in the in-app notification center, so a failure here is reported, never fatal.
  */
 export async function registerForPush(api: Endpoints, askPermission = true): Promise<PushRegistration> {
+  const N = loadNotifications();
+  if (!N) return { ok: false, reason: 'expo_go' };
   if (!Device.isDevice) return { ok: false, reason: 'not_a_device' };
   try {
-    if (Platform.OS === 'android') for (const c of CHANNELS) await Notifications.setNotificationChannelAsync(c.id, { name: c.name, importance: c.importance });
-    let { status } = await Notifications.getPermissionsAsync();
-    if (status !== 'granted' && askPermission) status = (await Notifications.requestPermissionsAsync()).status;
+    if (Platform.OS === 'android') for (const c of channels(N)) await N.setNotificationChannelAsync(c.id, { name: c.name, importance: c.importance });
+    let { status } = await N.getPermissionsAsync();
+    if (status !== 'granted' && askPermission) status = (await N.requestPermissionsAsync()).status;
     if (status !== 'granted') return { ok: false, reason: 'permission_denied' };
     const projectId = (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId ?? Constants.easConfig?.projectId;
     if (!projectId || projectId.startsWith('REPLACE')) return { ok: false, reason: 'no_project_id' };
-    const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
+    const { data: token } = await N.getExpoPushTokenAsync({ projectId });
     await api.notifications.registerDevice(token, Platform.OS === 'ios' ? 'ios' : 'android', Device.deviceName ?? Device.modelName ?? undefined);
     return { ok: true, token };
   } catch (e) {
@@ -51,10 +64,12 @@ export async function registerForPush(api: Endpoints, askPermission = true): Pro
 }
 
 export async function unregisterPush(api: Endpoints): Promise<void> {
+  const N = loadNotifications();
+  if (!N) return;
   try {
     const projectId = (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId;
     if (!projectId || projectId.startsWith('REPLACE') || !Device.isDevice) return;
-    const { data } = await Notifications.getExpoPushTokenAsync({ projectId });
+    const { data } = await N.getExpoPushTokenAsync({ projectId });
     await api.notifications.unregisterDevice(data);
   } catch { /* offline or never registered: the server also drops tokens the push service reports as gone */ }
 }

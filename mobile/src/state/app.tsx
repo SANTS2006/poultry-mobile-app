@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import * as Notifications from 'expo-notifications';
+import type * as NotificationsModule from 'expo-notifications';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 import { io } from 'socket.io-client';
@@ -9,7 +9,7 @@ import { API_URL, CONFIG_ERROR } from '../config';
 import { shouldLock } from '../lib/app-lock';
 import { biometricsAvailable } from '../services/biometrics';
 import { getServices, refreshReference, type Services } from '../services/container';
-import { configureForegroundNotifications, registerForPush, routeForNotification } from '../services/push';
+import { configureForegroundNotifications, loadNotifications, registerForPush, routeForNotification } from '../services/push';
 import { RealtimeClient, type SocketFactory } from '../services/realtime';
 import { AuthRequiredError, HttpError } from '../sync/types';
 import { BootError, BootSplash } from '../ui/boot';
@@ -125,13 +125,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // opening a notification: go to the screen it refers to (details are loaded through the authenticated API)
   useEffect(() => {
-    const open = (r: Notifications.NotificationResponse | null) => {
+    const N = loadNotifications();
+    if (!N) return; // Expo Go: no push, nothing to open
+    const open = (r: NotificationsModule.NotificationResponse | null) => {
       if (!r || store.getState().status !== 'signed_in') return;
       const data = r.notification.request.content.data as { notificationId?: string; entityType?: string | null; entityId?: string | null } | undefined;
       if (data?.notificationId && ctx) void ctx.api.notifications.opened(data.notificationId).catch(() => undefined);
       router.push(routeForNotification(data) as never);
     };
-    const sub = Notifications.addNotificationResponseReceivedListener(open);
+    const sub = N.addNotificationResponseReceivedListener(open);
     return () => sub.remove();
   }, [ctx, router, store]);
 

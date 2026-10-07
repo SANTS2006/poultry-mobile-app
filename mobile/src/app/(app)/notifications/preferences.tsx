@@ -34,7 +34,7 @@ export default function NotificationPreferences() {
       try { const t = await api.notifications.test(); Alert.alert('Push notifications are on', t.provider === 'none' ? 'This server is not configured to send push messages yet, but in-app notifications work.' : 'A test notification is on its way to this phone.'); }
       catch (e) { Alert.alert('Push is on', describeError(e)); }
     } else Alert.alert('Push notifications are not on', ({
-      not_a_device: 'Push notifications need a real phone (not a simulator).', permission_denied: 'Notifications are blocked for this app. Turn them on in your phone settings.',
+      expo_go: 'Push notifications do not work inside Expo Go (a limit of Expo Go). In-app notifications still work. Use a development build for push.', not_a_device: 'Push notifications need a real phone (not a simulator).', permission_denied: 'Notifications are blocked for this app. Turn them on in your phone settings.',
       no_project_id: 'This build has no push project configured. Ask your administrator.', error: r.detail ?? 'Something went wrong.',
     } as const)[r.reason]);
   }

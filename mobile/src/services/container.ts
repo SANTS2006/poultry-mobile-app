@@ -1,4 +1,5 @@
-import { API_URL } from '../config';
+import { API_URL, APP_ENV } from '../config';
+import { IS_EXPO_GO } from '../lib/runtime';
 import { businessToday } from '../lib/format';
 import { HttpSyncTransport, ReferenceCache, SyncEngine, type CachedReference, type OutboxStorage } from '../sync';
 import { ApiClient } from './api-client';
@@ -20,6 +21,8 @@ export interface Services {
   /** latest reference data in memory (for offline forms); refreshed by `refreshReference` */
   refData: { current: CachedReference | null };
   session: SessionManager;
+  /** false in Expo Go: the on-phone database is plain SQLite */
+  dbEncrypted: boolean;
 }
 
 let instance: Promise<Services> | null = null;
@@ -48,7 +51,8 @@ async function build(): Promise<Services> {
   const tokens = new TokenManager(secure, API_URL, fetchImpl, headers);
   const api = new ApiClient(API_URL, tokens, fetchImpl, headers);
   const pub = new PublicApi(API_URL, fetchImpl, headers);
-  const storage = await openOutbox(secure);
+  // Production builds refuse to run without SQLCipher; development/staging and Expo Go may, and the UI says so.
+  const { storage, encrypted: dbEncrypted } = await openOutbox(secure, APP_ENV === 'production' && !IS_EXPO_GO);
   const transport = new HttpSyncTransport(api);
   const reference = new ReferenceCache(storage, transport);
   const refData: Services['refData'] = { current: await reference.load() };
@@ -69,5 +73,5 @@ async function build(): Promise<Services> {
   });
   const gate = new StorageOutboxGate(storage, engine);
   const session = new SessionManager(secure, tokens, api, pub, gate);
-  return { secure, network, tokens, api, pub, storage, engine, reference, refData, session };
+  return { secure, network, tokens, api, pub, storage, engine, reference, refData, session, dbEncrypted };
 }
