@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View } from 'react-native';
+import { AuthHeader } from '../ui/brand';
 import { Button, Card, Screen, Text } from '../ui/components';
 import { space, useColors } from '../ui/theme';
 
@@ -12,7 +13,7 @@ export function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () =
   const [saved, setSaved] = useState(false);
   return (
     <Screen>
-      <Text size="h1" bold accessibilityRole="header">Save your recovery codes</Text>
+      <AuthHeader icon="document-lock-outline" title="Save your recovery codes" subtitle="Your safety net if you lose your phone." />
       <Card tone="warn">
         <Text bold>Each code works once.</Text>
         <Text>If you lose your phone, these codes are the only way to sign in without your authenticator app. Write them down or store them in a password manager. They will not be shown again.</Text>
@@ -22,7 +23,7 @@ export function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () =
           {codes.map((code) => <Text key={code} selectable size="title" bold style={{ fontVariant: ['tabular-nums'], color: c.text }}>{code}</Text>)}
         </View>
       </Card>
-      <Button title={saved ? 'Saved — continue' : 'I have saved these codes'} variant={saved ? 'primary' : 'secondary'} onPress={() => (saved ? onDone() : setSaved(true))} />
+      <Button title={saved ? 'Continue' : 'I have saved these codes'} icon={saved ? 'arrow-forward' : 'checkmark'} variant={saved ? 'primary' : 'secondary'} onPress={() => (saved ? onDone() : setSaved(true))} />
     </Screen>
   );
 }

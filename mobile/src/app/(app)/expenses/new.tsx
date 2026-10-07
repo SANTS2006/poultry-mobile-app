@@ -1,11 +1,10 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert } from 'react-native';
 import { ProblemList } from '../../../features/ProblemList';
 import { addDays, formatDate, formatMoney, isMoneyInput } from '../../../lib/format';
 import { fromCents, toCents } from '../../../lib/money';
 import { useReference } from '../../../queries/hooks';
-import { useRecord } from '../../../queries/use-record';
+import { useRecord, useSavedToast } from '../../../queries/use-record';
 import { Button, Card, Field, Loading, Row, Screen, Segmented, Text } from '../../../ui/components';
 
 const METHODS = [{ value: 'CASH', label: 'Cash' }, { value: 'MOBILE_MONEY', label: 'Mobile money' }, { value: 'BANK_TRANSFER', label: 'Bank' }, { value: 'OTHER', label: 'Other' }] as const;
@@ -14,6 +13,7 @@ export default function NewExpense() {
   const router = useRouter();
   const ref = useReference();
   const rec = useRecord('expense.create');
+  const saved = useSavedToast();
   const [category, setCategory] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [byQty, setByQty] = useState(false);
@@ -24,6 +24,7 @@ export default function NewExpense() {
   const [method, setMethod] = useState<(typeof METHODS)[number]['value']>('CASH');
   const [daysBack, setDaysBack] = useState(0);
   const [notes, setNotes] = useState('');
+  const [catError, setCatError] = useState<string | null>(null);
 
   const categories = ref.data?.expenseCategories ?? [];
   const suppliers = ref.data?.suppliers ?? [];
@@ -39,7 +40,7 @@ export default function NewExpense() {
   }, [byQty, quantity, unitCost]);
 
   async function save() {
-    if (!category) return Alert.alert('Choose a category', 'What kind of expense is this?');
+    if (!category) { setCatError('Choose what kind of expense this is.'); return; }
     const payload: Record<string, unknown> = {
       categoryCode: category, description: description.trim(), expenseDate: date, paymentMethod: method,
       ...(supplierId ? { supplierId } : {}), ...(notes.trim() ? { notes: notes.trim() } : {}),
@@ -47,7 +48,7 @@ export default function NewExpense() {
     if (byQty) { payload.quantity = quantity.trim(); payload.unitCost = unitCost.trim(); } else payload.total = total.trim();
     const result = await rec.submit(payload);
     if (result) {
-      Alert.alert(result.sentNow ? 'Expense recorded' : 'Saved on this phone', result.sentNow ? description.trim() : 'It will be sent when you are back online.');
+      saved(result, 'Expense recorded');
       router.back();
     }
   }
@@ -55,7 +56,7 @@ export default function NewExpense() {
   if (ref.loading && !ref.data) return <Screen><Loading label="Loading categories" /></Screen>;
   return (
     <Screen>
-      <Segmented label="Category" value={category} onChange={setCategory} options={categories.map((c) => ({ value: c.code, label: c.name }))} />
+      <Segmented label="Category" error={catError} value={category} onChange={(v) => { setCategory(v); setCatError(null); }} options={categories.map((c) => ({ value: c.code, label: c.name }))} />
       <Field label="What was it for?" value={description} onChangeText={setDescription} maxLength={300} />
       <Segmented value={byQty ? 'q' : 't'} onChange={(v) => setByQty(v === 'q')} options={[{ value: 't', label: 'Total amount' }, { value: 'q', label: 'Quantity × price' }]} />
       {byQty ? (

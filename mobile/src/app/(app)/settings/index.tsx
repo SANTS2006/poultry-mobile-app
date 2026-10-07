@@ -1,16 +1,17 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Switch } from 'react-native';
+import { Alert, Switch, View } from 'react-native';
 import { APP_ENV, APP_VERSION } from '../../../config';
-import { IS_EXPO_GO } from '../../../lib/runtime';
 import { describeError } from '../../../lib/errors';
+import { IS_EXPO_GO } from '../../../lib/runtime';
 import { authenticateLocally, biometricsAvailable } from '../../../services/biometrics';
 import { unregisterPush } from '../../../services/push';
 import { UnsyncedDataError } from '../../../services/session-manager';
 import { useApp, useEndpoints } from '../../../state/app';
 import { useAppStore } from '../../../state/store';
-import { Button, Card, ListRow, Screen, SectionTitle, Text } from '../../../ui/components';
-import { useColors } from '../../../ui/theme';
+import { Avatar, Badge, Button, Card, ListRow, Screen, SectionHeader, Text } from '../../../ui/components';
+import { Icon } from '../../../ui/icon';
+import { space, useColors } from '../../../ui/theme';
 
 const BIOMETRIC_PREF = 'pref.biometricLock';
 
@@ -22,6 +23,7 @@ export default function Settings() {
   const user = useAppStore((s) => s.user);
   const bio = useAppStore((s) => s.biometricLock);
   const [busy, setBusy] = useState(false);
+  const group = { padding: 0, gap: 0, overflow: 'hidden' } as const;
 
   async function toggleBiometric(on: boolean) {
     if (on) {
@@ -35,6 +37,9 @@ export default function Settings() {
   async function signOut(discard = false) {
     setBusy(true);
     try {
+      // Check for unsent records BEFORE touching anything, so a refused sign-out leaves the session (and push) intact.
+      const { unsynced } = await services.engine.summary();
+      if (unsynced > 0 && !discard) throw new UnsyncedDataError(unsynced, false);
       await unregisterPush(api);
       await services.session.logout({ discardUnsynced: discard });
     } catch (e) {
@@ -48,28 +53,46 @@ export default function Settings() {
   }
 
   return (
-    <Screen padded={false}>
-      <Card style={{ margin: 16 }}>
-        <Text bold>{user?.fullName}</Text><Text muted>{user?.email}</Text>
-        <Text muted>Two-step sign-in: {user?.mfaEnabled ? 'on' : 'off'}</Text>
+    <Screen>
+      <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+        <Avatar name={user?.fullName ?? '?'} size={60} />
+        <View style={{ flex: 1, gap: space.xs }}>
+          <Text variant="heading" numberOfLines={1}>{user?.fullName}</Text>
+          <Text variant="caption" muted numberOfLines={1}>{user?.email}</Text>
+          <Badge tone={user?.mfaEnabled ? 'ok' : 'warn'} label={user?.mfaEnabled ? 'Two-step sign-in on' : 'Two-step sign-in off'} />
+        </View>
       </Card>
+
       {IS_EXPO_GO || !services.dbEncrypted ? (
-        <Card tone="warn" style={{ marginHorizontal: 16 }}>
-          <Text bold>{IS_EXPO_GO ? 'Running in Expo Go (testing only)' : 'Local database is not encrypted'}</Text>
-          <Text>{services.dbEncrypted ? '' : 'Records saved on this phone are stored in a plain, unencrypted database. '}Remote push notifications are unavailable. Use a development or store build for real work.</Text>
+        <Card tone="warn">
+          <Text variant="heading">{IS_EXPO_GO ? 'Running in Expo Go (testing only)' : 'Local database is not encrypted'}</Text>
+          <Text>{services.dbEncrypted ? '' : 'Records saved on this phone are stored unencrypted. '}Remote push notifications are unavailable. Use a development or store build for real work.</Text>
         </Card>
       ) : null}
-      <SectionTitle>Security</SectionTitle>
-      <ListRow title="Change password" onPress={() => router.push('/settings/password')} right={<Text muted>›</Text>} />
-      <ListRow title="Two-step sign-in" subtitle={user?.mfaEnabled ? 'On — manage recovery codes' : 'Off — turn on with an authenticator app'} onPress={() => router.push('/settings/mfa')} right={<Text muted>›</Text>} />
-      <ListRow title="Devices and sessions" subtitle="See where you are signed in" onPress={() => router.push('/settings/sessions')} right={<Text muted>›</Text>} />
-      <ListRow title="Lock app with fingerprint / face" subtitle="Asks to unlock when you return to the app" right={<Switch value={bio} onValueChange={(v) => void toggleBiometric(v)} trackColor={{ true: c.primary }} accessibilityLabel="Biometric app lock" />} />
-      <SectionTitle>Notifications</SectionTitle>
-      <ListRow title="Notification settings" onPress={() => router.push('/notifications/preferences')} right={<Text muted>›</Text>} />
-      <Card style={{ margin: 16 }}>
-        <Button title="Sign out" variant="danger" onPress={() => void signOut()} busy={busy} />
-        <Text size="small" muted>Version {APP_VERSION}{APP_ENV !== 'production' ? ` · ${APP_ENV}` : ''}</Text>
-      </Card>
+
+      <View style={{ gap: space.md }}>
+        <SectionHeader title="Security" />
+        <Card style={group}>
+          <ListRow icon="key-outline" title="Change password" subtitle="Signs you out on every device" onPress={() => router.push('/settings/password')} />
+          <ListRow icon="shield-checkmark-outline" title="Two-step sign-in" subtitle={user?.mfaEnabled ? 'On · manage recovery codes' : 'Off · add an authenticator app'} onPress={() => router.push('/settings/mfa')} />
+          <ListRow icon="phone-portrait-outline" title="Devices and sessions" subtitle="See where you are signed in" onPress={() => router.push('/settings/sessions')} />
+          <ListRow
+            icon="finger-print-outline" title="App lock" subtitle="Ask for fingerprint or face when you return"
+            right={<Switch value={bio} onValueChange={(v) => void toggleBiometric(v)} trackColor={{ true: c.primary }} accessibilityLabel="Biometric app lock" />}
+          />
+        </Card>
+      </View>
+
+      <View style={{ gap: space.md }}>
+        <SectionHeader title="Notifications" />
+        <Card style={group}><ListRow icon="notifications-outline" title="Notification settings" subtitle="Choose what you hear about" onPress={() => router.push('/notifications/preferences')} /></Card>
+      </View>
+
+      <Button title="Sign out" variant="secondary" icon="log-out-outline" onPress={() => void signOut()} busy={busy} />
+      <View style={{ alignItems: 'center', gap: space.xs }}>
+        <Icon name="egg" size="sm" color={c.muted} />
+        <Text variant="caption" muted>Makarifor Poultry {APP_VERSION}{APP_ENV !== 'production' ? ` · ${APP_ENV}` : ''}</Text>
+      </View>
     </Screen>
   );
 }

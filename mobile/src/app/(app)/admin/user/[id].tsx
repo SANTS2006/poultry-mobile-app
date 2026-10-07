@@ -1,13 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert } from 'react-native';
 import { describeError } from '../../../../lib/errors';
 import { formatDateTime } from '../../../../lib/format';
 import { useEndpoints } from '../../../../state/app';
 import { useAppStore } from '../../../../state/store';
 import { Badge, Button, Card, ErrorView, Loading, Row, Screen, SectionTitle, Segmented, Text } from '../../../../ui/components';
 import { ReasonModal } from '../../../../ui/reason-modal';
+import { useToast } from '../../../../ui/toast';
 
 type Action = 'disable' | 'reactivate' | 'revoke' | 'resetMfa' | 'roles';
 
@@ -16,6 +16,7 @@ export default function UserDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const api = useEndpoints();
   const qc = useQueryClient();
+  const toast = useToast();
   const me = useAppStore((s) => s.user);
   const q = useQuery({ queryKey: ['admin', 'user', id], queryFn: () => api.admin.user(id) });
   const roles = useQuery({ queryKey: ['admin', 'roles'], queryFn: () => api.admin.roles() });
@@ -37,8 +38,8 @@ export default function UserDetail() {
       if (action === 'roles' && role) await api.admin.setRoles(id, [role], reason);
       setAction(null);
       await qc.invalidateQueries({ queryKey: ['admin'] });
-      Alert.alert('Done');
-    } catch (e) { setAction(null); Alert.alert('Could not do that', describeError(e)); }
+      toast.show('Done');
+    } catch (e) { setAction(null); toast.show(describeError(e), 'error'); }
   }
 
   const TITLE: Record<Action, string> = { disable: 'Disable this account?', reactivate: 'Re-enable this account?', revoke: 'Sign this user out everywhere?', resetMfa: 'Reset two-step sign-in?', roles: 'Change role?' };

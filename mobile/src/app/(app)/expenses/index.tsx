@@ -16,11 +16,12 @@ export default function Expenses() {
     <PagedList<Expense>
       queryKey={['expenses', 'list']}
       fetchPage={(page, limit) => api.expenses.list({ page, limit })}
-      emptyTitle="No expenses yet"
-      header={canCreate ? <View style={{ padding: space.lg }}><Button title="Add expense" onPress={() => router.push('/expenses/new')} /></View> : undefined}
+      emptyIcon="wallet-outline" emptyTitle="No expenses yet" emptyHint="Record feed, labour and other costs to see where the money goes."
+      emptyAction={canCreate ? { label: 'Add expense', icon: 'add', onPress: () => router.push('/expenses/new') } : undefined}
+      header={canCreate ? <View style={{ padding: space.lg }}><Button title="Add expense" icon="add" onPress={() => router.push('/expenses/new')} /></View> : undefined}
       renderItem={(e) => (
         <ListRow
-          title={`${formatMoney(e.total)} · ${e.category.name}`} subtitle={`${e.expenseDate ? formatDate(e.expenseDate) : 'No date'} · ${e.description}${e.supplier ? ` · ${e.supplier.name}` : ''}`}
+          icon="wallet-outline" title={`${formatMoney(e.total)} · ${e.category.name}`} subtitle={`${e.expenseDate ? formatDate(e.expenseDate) : 'No date'} · ${e.description}${e.supplier ? ` · ${e.supplier.name}` : ''}`}
           badge={e.needsReview ? <Badge tone="warn" label="Needs review" /> : undefined}
         />
       )}

@@ -1,13 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert } from 'react-native';
 import { describeError, isHttp } from '../../../lib/errors';
 import { eggBreakdown, formatDate, formatDateTime, formatInt } from '../../../lib/format';
 import { useEndpoints } from '../../../state/app';
 import { useCan } from '../../../state/store';
 import { ReasonModal } from '../../../ui/reason-modal';
-import { Badge, Button, Card, ErrorView, Field, Loading, Row, Screen, SectionTitle, Stepper, Text } from '../../../ui/components';
+import { useToast } from '../../../ui/toast';
+import { Badge, Button, InlineError, Card, ErrorView, Field, Loading, Row, Screen, SectionTitle, Stepper, Text } from '../../../ui/components';
 import type { Unit } from '../../../api/types';
 
 const UNIT_LABEL: Record<Unit, string> = { CARTON: 'Cartons', CRATE: 'Crates', EGG: 'Single eggs' };
@@ -19,6 +19,7 @@ export default function ProductionDetail() {
   const qc = useQueryClient();
   const canCorrect = useCan('production.update');
   const canVoid = useCan('production.delete');
+  const toast = useToast();
   const q = useQuery({ queryKey: ['production', 'detail', id], queryFn: () => api.production.get(id) });
   const [editing, setEditing] = useState(false);
   const [voiding, setVoiding] = useState(false);
@@ -42,7 +43,7 @@ export default function ProductionDetail() {
       await qc.invalidateQueries({ queryKey: ['inventory'] });
       await qc.invalidateQueries({ queryKey: ['dashboard'] });
       setEditing(false);
-      Alert.alert(done);
+      toast.show(done);
     } catch (e) {
       setError(isHttp(e, 409) ? `${describeError(e)} Pull down to reload the latest version.` : describeError(e));
     } finally {
@@ -84,7 +85,7 @@ export default function ProductionDetail() {
           }} />
           <Button title="Cancel" variant="ghost" onPress={() => setEditing(false)} />
         </>
-      ) : error ? <Text color="#B42318">{error}</Text> : null}
+      ) : error ? <InlineError message={error} /> : null}
       <ReasonModal
         visible={voiding} title="Void this record?" message="The eggs are taken back out of stock. The record stays in the history and the reason goes to the audit log." confirmLabel="Void" danger
         onCancel={() => setVoiding(false)}

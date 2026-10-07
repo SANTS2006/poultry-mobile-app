@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { RecoveryCodes } from '../../features/RecoveryCodes';
 import { useAuthFlow } from '../../state/auth-flow';
-import { useColors } from '../../ui/theme';
+import { typeScale, useColors } from '../../ui/theme';
 
 export default function AppLayout() {
   const c = useColors();
@@ -9,7 +9,7 @@ export default function AppLayout() {
   // Freshly created recovery codes are shown once, before anything else.
   if (codes) return <RecoveryCodes codes={codes} onDone={() => useAuthFlow.getState().clear()} />;
   return (
-    <Stack screenOptions={{ headerStyle: { backgroundColor: c.card }, headerTintColor: c.text, contentStyle: { backgroundColor: c.bg } }}>
+    <Stack screenOptions={{ headerStyle: { backgroundColor: c.bg }, headerShadowVisible: false, headerTintColor: c.text, headerTitleStyle: { ...typeScale.heading, color: c.text }, headerBackButtonDisplayMode: 'minimal', contentStyle: { backgroundColor: c.bg }, animation: 'slide_from_right' }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="production/new" options={{ title: 'Record production' }} />
       <Stack.Screen name="production/[id]" options={{ title: 'Production record' }} />

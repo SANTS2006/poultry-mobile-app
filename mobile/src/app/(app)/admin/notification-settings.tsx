@@ -6,6 +6,7 @@ import { isMoneyInput } from '../../../lib/format';
 import { useEndpoints } from '../../../state/app';
 import { Button, ErrorView, Field, ListRow, Loading, Screen, SectionTitle, Text } from '../../../ui/components';
 import { useColors } from '../../../ui/theme';
+import { useToast } from '../../../ui/toast';
 
 type Reminder = { shift: string; time: string };
 const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -25,6 +26,7 @@ function RulesForm({ initial }: { initial: Config }) {
   const api = useEndpoints();
   const qc = useQueryClient();
   const c = useColors();
+  const toast = useToast();
   const [summaryOn, setSummaryOn] = useState(Boolean(initial.dailySummaryEnabled));
   const [summaryTime, setSummaryTime] = useState(String(initial.dailySummaryTime ?? '18:00'));
   const [large, setLarge] = useState(initial.largeSaleThreshold ? String(initial.largeSaleThreshold) : '');
@@ -43,7 +45,7 @@ function RulesForm({ initial }: { initial: Config }) {
         largeSaleThreshold: large.trim() || null, monthlyExpenseThreshold: monthly.trim() || null,
       });
       await qc.invalidateQueries({ queryKey: ['admin', 'notification-config'] });
-      Alert.alert('Saved');
+      toast.show('Notification rules saved');
     } catch (e) { Alert.alert('Could not save', describeError(e)); } finally { setBusy(false); }
   }
 

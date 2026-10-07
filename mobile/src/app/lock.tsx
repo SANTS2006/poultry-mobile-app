@@ -4,7 +4,8 @@ import { describeError } from '../lib/errors';
 import { authenticateLocally } from '../services/biometrics';
 import { useApp } from '../state/app';
 import { useAppStore } from '../state/store';
-import { Button, Text } from '../ui/components';
+import { BrandMark } from '../ui/brand';
+import { Button, InlineError, Text } from '../ui/components';
 import { space, useColors } from '../ui/theme';
 
 /** Shown instead of the app while the biometric lock is engaged. Data is not rendered behind it. */
@@ -29,15 +30,13 @@ export default function LockScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center', padding: space.xl, gap: space.lg }}>
-      <Text size="h1" bold>Locked</Text>
-      <Text muted style={{ textAlign: 'center' }}>{user?.fullName ?? 'Makarifor Poultry'} — unlock with your fingerprint, face or phone passcode.</Text>
-      {failed ? <Text color={c.danger}>Could not verify you. Try again.</Text> : null}
-      <Button title="Unlock" onPress={() => void unlock()} />
-      {signOutError ? <Text color={c.danger} style={{ textAlign: 'center' }}>{signOutError}</Text> : null}
-      <Button
-        title="Sign out instead" variant="ghost"
-        onPress={() => { services.session.logout().catch((e: unknown) => setSignOutError(describeError(e))); }}
-      />
+      <BrandMark size={72} />
+      <Text variant="title" accessibilityRole="header">App locked</Text>
+      <Text muted style={{ textAlign: 'center' }}>{user?.fullName ?? 'Makarifor Poultry'}, unlock with your fingerprint, face or phone passcode.</Text>
+      <InlineError message={failed ? 'We couldn’t verify you. Try again.' : null} />
+      <Button title="Unlock" icon="finger-print-outline" onPress={() => void unlock()} />
+      <InlineError message={signOutError} />
+      <Button title="Sign out instead" variant="ghost" onPress={() => { services.session.logout().catch((e: unknown) => setSignOutError(describeError(e))); }} />
     </View>
   );
 }

@@ -2,19 +2,23 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { describeError } from '../../lib/errors';
 import { useApp } from '../../state/app';
-import { Button, Card, Field, Screen, Text } from '../../ui/components';
+import { AuthHeader, SuccessPanel } from '../../ui/brand';
+import { Button, Field, InlineError, Screen } from '../../ui/components';
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export default function ForgotPassword() {
   const router = useRouter();
   const { services } = useApp();
   const [email, setEmail] = useState('');
+  const [fieldError, setFieldError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function submit() {
-    if (!email.trim()) { setError('Enter your email address.'); return; }
-    setBusy(true); setError(null);
+    if (!EMAIL_RE.test(email.trim())) { setFieldError('Enter the email address you sign in with.'); return; }
+    setBusy(true); setError(null); setFieldError(null);
     try {
       await services.pub.post('/v1/auth/forgot-password', { email: email.trim() });
       setSent(true);
@@ -28,16 +32,16 @@ export default function ForgotPassword() {
   return (
     <Screen>
       {sent ? (
-        <Card tone="ok">
-          <Text bold>Check your email</Text>
-          <Text>If an account exists for that address, we have sent a link to reset the password. The link works once and expires soon.</Text>
-          <Button title="I have a reset code" variant="secondary" onPress={() => router.replace('/reset-password')} />
-        </Card>
+        <SuccessPanel title="Check your email" body="If an account exists for that address, we’ve sent a link to reset the password. The link works once and expires soon.">
+          <Button title="I have a reset code" variant="secondary" icon="key-outline" onPress={() => router.replace('/reset-password')} />
+          <Button title="Back to sign in" variant="ghost" onPress={() => router.replace('/login')} />
+        </SuccessPanel>
       ) : (
         <>
-          <Text muted>Enter the email address of your account. We will send a reset link if it exists.</Text>
-          <Field label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" error={error} />
-          <Button title="Send reset link" onPress={() => void submit()} busy={busy} />
+          <AuthHeader icon="key-outline" title="Forgot your password?" subtitle="Enter your email and we’ll send you a link to choose a new one." />
+          <Field label="Email" icon="mail-outline" value={email} onChangeText={(t) => { setEmail(t); setFieldError(null); }} error={fieldError} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="email" returnKeyType="send" onSubmitEditing={() => void submit()} autoFocus />
+          <InlineError message={error} />
+          <Button title="Send reset link" icon="paper-plane-outline" onPress={() => void submit()} busy={busy} />
         </>
       )}
     </Screen>

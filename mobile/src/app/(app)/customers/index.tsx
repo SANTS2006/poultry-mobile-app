@@ -5,7 +5,7 @@ import type { Customer } from '../../../api/types';
 import { formatMoney } from '../../../lib/format';
 import { useEndpoints } from '../../../state/app';
 import { useCan } from '../../../state/store';
-import { Badge, Button, Field, ListRow, Text } from '../../../ui/components';
+import { Badge, Button, ListRow, SearchBar } from '../../../ui/components';
 import { PagedList } from '../../../ui/paged-list';
 import { space } from '../../../ui/theme';
 
@@ -18,18 +18,18 @@ export default function Customers() {
     <PagedList<Customer>
       queryKey={['customers', 'list', q]}
       fetchPage={(page, limit) => api.customers.list({ page, limit, q: q.trim() || undefined })}
-      emptyTitle="No customers found"
+      emptyIcon="people-outline" emptyTitle="No customers found" emptyHint={q ? 'Try a different name or phone number.' : 'Add your regular buyers to track credit and payments.'}
       header={(
         <View style={{ padding: space.lg, gap: space.sm }}>
-          <Field label="Search" value={q} onChangeText={setQ} autoCorrect={false} />
-          {canCreate ? <Button title="Add customer" variant="secondary" onPress={() => router.push('/customers/new')} /> : null}
+          <SearchBar value={q} onChangeText={setQ} placeholder="Search customers" />
+          {canCreate ? <Button title="Add customer" icon="person-add-outline" variant="secondary" onPress={() => router.push('/customers/new')} /> : null}
         </View>
       )}
       renderItem={(c) => (
         <ListRow
-          title={c.name} subtitle={[c.type === 'WHOLESALE' ? 'Wholesale' : 'Regular', c.phone].filter(Boolean).join(' · ')}
+          icon="person-outline" title={c.name} subtitle={[c.type === 'WHOLESALE' ? 'Wholesale' : 'Regular', c.phone].filter(Boolean).join(' · ')}
           badge={c.outstandingBalance && Number(c.outstandingBalance) > 0 ? <Badge tone="warn" label={`Owes ${formatMoney(c.outstandingBalance)}`} /> : undefined}
-          onPress={() => router.push(`/customers/${c.id}`)} right={<Text muted>›</Text>}
+          onPress={() => router.push(`/customers/${c.id}`)} 
         />
       )}
     />

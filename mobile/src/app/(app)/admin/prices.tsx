@@ -1,12 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Alert } from 'react-native';
 import type { Unit } from '../../../api/types';
 import { describeError } from '../../../lib/errors';
 import { formatDateTime, formatMoney, isMoneyInput } from '../../../lib/format';
 import { useEndpoints } from '../../../state/app';
 import { Button, Card, ErrorView, Field, Loading, Screen, SectionTitle, Segmented, Text } from '../../../ui/components';
 import { ReasonModal } from '../../../ui/reason-modal';
+import { useToast } from '../../../ui/toast';
 
 const UNITS: { value: Unit; label: string }[] = [{ value: 'CARTON', label: 'Carton (360)' }, { value: 'CRATE', label: 'Crate (30)' }, { value: 'EGG', label: 'Single egg' }];
 
@@ -14,6 +14,7 @@ const UNITS: { value: Unit; label: string }[] = [{ value: 'CARTON', label: 'Cart
 export default function Prices() {
   const api = useEndpoints();
   const qc = useQueryClient();
+  const toast = useToast();
   const q = useQuery({ queryKey: ['admin', 'prices'], queryFn: () => api.prices() });
   const [unit, setUnit] = useState<Unit>('CRATE');
   const [amount, setAmount] = useState('');
@@ -25,8 +26,8 @@ export default function Prices() {
       await api.setPrice(unit, amount.trim(), reason);
       setAsking(false); setAmount('');
       await qc.invalidateQueries({ queryKey: ['admin', 'prices'] });
-      Alert.alert('Price saved', 'New sales use it straight away. Phones pick it up the next time they sync.');
-    } catch (e) { setAsking(false); Alert.alert('Could not save the price', describeError(e)); }
+      toast.show('Price saved. New sales use it straight away.');
+    } catch (e) { setAsking(false); toast.show(describeError(e), 'error'); }
   }
 
   return (

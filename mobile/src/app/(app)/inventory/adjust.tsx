@@ -1,12 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert } from 'react-native';
 import type { Unit } from '../../../api/types';
 import { describeError } from '../../../lib/errors';
 import { newId } from '../../../services/platform';
 import { useEndpoints } from '../../../state/app';
 import { Button, Card, Field, Screen, Segmented, Stepper, Text } from '../../../ui/components';
+import { useToast } from '../../../ui/toast';
 
 type Kind = 'DAMAGE' | 'LOSS' | 'USAGE' | 'INCREASE' | 'DECREASE';
 
@@ -15,6 +15,7 @@ export default function AdjustStock() {
   const api = useEndpoints();
   const router = useRouter();
   const qc = useQueryClient();
+  const toast = useToast();
   const [kind, setKind] = useState<Kind>('DAMAGE');
   const [unit, setUnit] = useState<Unit>('EGG');
   const [qty, setQty] = useState(0);
@@ -33,7 +34,7 @@ export default function AdjustStock() {
         unit, quantity: qty, reason: reason.trim(), clientId,
       });
       await qc.invalidateQueries();
-      Alert.alert('Stock updated');
+      toast.show('Stock updated');
       router.back();
     } catch (e) {
       setError(describeError(e));

@@ -4,7 +4,8 @@ import { Image, Linking, View } from 'react-native';
 import { describeError } from '../../lib/errors';
 import { useApp } from '../../state/app';
 import { useAuthFlow } from '../../state/auth-flow';
-import { Button, Card, Field, Loading, Screen, Text } from '../../ui/components';
+import { AuthHeader } from '../../ui/brand';
+import { Button, Card, Field, InlineError, Loading, Screen, Text } from '../../ui/components';
 import { space } from '../../ui/theme';
 
 /** Privileged roles (Owner, Super Admin) must enrol before receiving a session. The setup token only authorises these two calls. */
@@ -42,8 +43,9 @@ export default function MfaSetup() {
 
   return (
     <Screen>
+      <AuthHeader icon="shield-checkmark-outline" title="Set up two-step sign-in" subtitle="Your role handles sensitive data, so a second step is required." />
       <Card>
-        <Text bold>Your role requires two-step sign-in.</Text>
+        <Text variant="heading">How to set it up</Text>
         <Text muted>1. Install an authenticator app (Google Authenticator, Microsoft Authenticator, Aegis…).{'\n'}2. Scan this code, or type the key.{'\n'}3. Enter the 6-digit code it shows.</Text>
       </Card>
       {!enrolment && !error ? <Loading /> : null}
@@ -55,8 +57,9 @@ export default function MfaSetup() {
           <Button title="Open in authenticator app" variant="secondary" onPress={() => void Linking.openURL(enrolment.otpauthUri).catch(() => undefined)} small />
         </View>
       ) : null}
-      <Field label="6-digit code" value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} autoComplete="one-time-code" error={error} />
-      <Button title="Turn on and sign in" onPress={() => void confirm()} busy={busy} disabled={!enrolment} />
+      <Field label="6-digit code" icon="keypad-outline" value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} autoComplete="one-time-code" error={enrolment ? error : null} />
+      {!enrolment ? <InlineError message={error} /> : null}
+      <Button title="Turn on and sign in" icon="checkmark" onPress={() => void confirm()} busy={busy} disabled={!enrolment} />
       <Button title="Cancel" variant="ghost" onPress={() => { flow.clear(); router.replace('/login'); }} />
     </Screen>
   );

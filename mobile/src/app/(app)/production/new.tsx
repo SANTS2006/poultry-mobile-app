@@ -1,11 +1,10 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert } from 'react-native';
 import { ProblemList } from '../../../features/ProblemList';
 import { addDays, eggBreakdown, formatDate, formatInt } from '../../../lib/format';
 import { eggsOf } from '../../../lib/money';
 import { useReference } from '../../../queries/hooks';
-import { useRecord } from '../../../queries/use-record';
+import { useRecord, useSavedToast } from '../../../queries/use-record';
 import { Button, Card, Field, Loading, Row, Screen, Segmented, Stepper, Text } from '../../../ui/components';
 
 const SHIFTS = [{ value: 'MORNING', label: 'Morning' }, { value: 'AFTERNOON', label: 'Afternoon' }, { value: 'EVENING', label: 'Evening' }] as const;
@@ -15,6 +14,7 @@ export default function NewProduction() {
   const router = useRouter();
   const ref = useReference();
   const rec = useRecord('production.create');
+  const saved = useSavedToast();
   const [coopId, setCoopId] = useState<string | null>(null);
   const [shift, setShift] = useState<(typeof SHIFTS)[number]['value'] | null>(null);
   const [daysBack, setDaysBack] = useState(0);
@@ -22,6 +22,7 @@ export default function NewProduction() {
   const [crates, setCrates] = useState(0);
   const [eggs, setEggs] = useState(0);
   const [notes, setNotes] = useState('');
+  const [errs, setErrs] = useState<{ coop?: string; shift?: string }>({});
 
   const unitEggs = useMemo(() => Object.fromEntries((ref.data?.units ?? []).map((u) => [u.code, u.eggsPerUnit])), [ref.data]);
   const lines = [{ unit: 'CARTON', quantity: cartons }, { unit: 'CRATE', quantity: crates }, { unit: 'EGG', quantity: eggs }];
@@ -30,14 +31,15 @@ export default function NewProduction() {
   const coops = ref.data?.coops ?? [];
 
   async function save() {
-    if (!coopId) return Alert.alert('Choose a coop', 'Tap the coop these eggs came from.');
-    if (!shift) return Alert.alert('Choose a shift', 'Was this the morning, afternoon or evening collection?');
+    const next = { coop: coopId ? undefined : 'Choose the coop these eggs came from.', shift: shift ? undefined : 'Choose the morning, afternoon or evening collection.' };
+    setErrs(next);
+    if (next.coop || next.shift || !coopId || !shift) return;
     const entries = lines.filter((l) => l.quantity > 0).map((l) => ({ unit: l.unit, quantity: l.quantity }));
     const result = await rec.submit({
       coopId, shift, productionDate: date, entries: entries.length ? entries : [{ unit: 'EGG', quantity: 0 }], ...(notes.trim() ? { notes: notes.trim() } : {}),
     });
     if (result) {
-      Alert.alert(result.sentNow ? 'Recorded' : 'Saved on this phone', result.sentNow ? `${formatInt(total)} eggs recorded.` : 'No connection right now. It will be sent automatically when you are back online.');
+      saved(result, `${formatInt(total)} eggs recorded`);
       router.back();
     }
   }
@@ -47,8 +49,8 @@ export default function NewProduction() {
 
   return (
     <Screen>
-      <Segmented label="Coop" value={coopId} onChange={setCoopId} options={coops.map((c) => ({ value: c.id, label: c.name }))} />
-      <Segmented label="Shift" value={shift} onChange={setShift} options={SHIFTS.map((s) => ({ value: s.value, label: s.label }))} />
+      <Segmented label="Coop" error={errs.coop} value={coopId} onChange={(v) => { setCoopId(v); setErrs((e) => ({ ...e, coop: undefined })); }} options={coops.map((c) => ({ value: c.id, label: c.name }))} />
+      <Segmented label="Shift" error={errs.shift} value={shift} onChange={(v) => { setShift(v); setErrs((e) => ({ ...e, shift: undefined })); }} options={SHIFTS.map((s) => ({ value: s.value, label: s.label }))} />
       <Row style={{ justifyContent: 'space-between' }}>
         <Text bold>{formatDate(date)}</Text>
         <Row>

@@ -1,15 +1,15 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, View } from 'react-native';
+import { View } from 'react-native';
 import { ProblemList } from '../../../features/ProblemList';
 import { formatInt, formatMoney, isMoneyInput } from '../../../lib/format';
 import { eggsOf, previewSale } from '../../../lib/money';
 import { useReference } from '../../../queries/hooks';
-import { pendingCustomers, useRecord } from '../../../queries/use-record';
+import { pendingCustomers, useRecord, useSavedToast } from '../../../queries/use-record';
 import { useApp } from '../../../state/app';
 import { useCan } from '../../../state/store';
 import { estimateStockEggs } from '../../../sync';
-import { Button, Card, Field, ListRow, Loading, Screen, Segmented, Stepper, Text } from '../../../ui/components';
+import { Button, Card, Field, InlineError, ListRow, Loading, Screen, Segmented, Stepper, Text } from '../../../ui/components';
 import { space } from '../../../ui/theme';
 
 type Pay = 'FULL' | 'PART' | 'CREDIT';
@@ -24,6 +24,7 @@ export default function NewSale() {
   const { services } = useApp();
   const ref = useReference();
   const rec = useRecord('sale.create');
+  const saved = useSavedToast();
   const canDiscount = useCan('sales.update');
   const [customer, setCustomer] = useState<{ id?: string; clientId?: string; name: string } | null>(null);
   const [search, setSearch] = useState('');
@@ -36,6 +37,7 @@ export default function NewSale() {
   const [paidNow, setPaidNow] = useState('');
   const [method, setMethod] = useState<(typeof METHODS)[number]['value']>('CASH');
   const [outboxTick, setOutboxTick] = useState(0);
+  const [errs, setErrs] = useState<{ items?: string; customer?: string; paid?: string }>({});
   const [unsentStock, setUnsentStock] = useState<number | null>(null);
 
   useEffect(() => { void pendingCustomers(services).then(setPending); }, [services]);
@@ -61,9 +63,13 @@ export default function NewSale() {
 
   async function save() {
     const items = lines.filter((l) => l.quantity > 0).map((l) => ({ unit: l.unit, quantity: l.quantity }));
-    if (!items.length) return Alert.alert('Add something to sell', 'Enter how many cartons, crates or eggs.');
-    if (pay !== 'FULL' && !customer) return Alert.alert('Choose a customer', 'Only registered customers can buy on credit or pay part now.');
-    if (pay === 'PART' && !isMoneyInput(paidNow)) return Alert.alert('Enter the amount paid now', 'Use numbers only, for example 500 or 500.50.');
+    const next = {
+      items: items.length ? undefined : 'Enter how many cartons, crates or eggs to sell.',
+      customer: pay !== 'FULL' && !customer ? 'Choose a registered customer to sell on credit or take a part payment.' : undefined,
+      paid: pay === 'PART' && !isMoneyInput(paidNow) ? 'Enter the amount paid now, for example 500 or 500.50.' : undefined,
+    };
+    setErrs(next);
+    if (next.items || next.customer || next.paid) return;
     const payload: Record<string, unknown> = { items, paymentMethod: method };
     if (customer?.id) payload.customerId = customer.id;
     if (customer?.clientId) payload.customerClientId = customer.clientId;
@@ -73,7 +79,7 @@ export default function NewSale() {
     const result = await rec.submit(payload);
     if (result) {
       setOutboxTick((t) => t + 1);
-      Alert.alert(result.sentNow ? 'Sale recorded' : 'Saved on this phone', result.sentNow ? `About ${formatMoney(preview.total, cur)}. The server confirms the final price.` : 'No connection right now. The sale will be sent automatically when you are back online.');
+      saved(result, `Sale recorded · about ${formatMoney(preview.total, cur)}`);
       router.back();
     }
   }
@@ -83,7 +89,7 @@ export default function NewSale() {
   return (
     <Screen>
       <View style={{ gap: space.sm }}>
-        <Text size="small" bold muted>Customer</Text>
+        <Text variant="label" muted>Customer</Text>
         <Segmented value={customer ? 'reg' : 'walk'} onChange={(v) => { if (v === 'walk') setCustomer(null); }} options={[{ value: 'walk', label: 'Walk-in' }, { value: 'reg', label: customer ? customer.name : 'Registered customer' }]} />
         {!customer ? (
           <>
@@ -95,9 +101,12 @@ export default function NewSale() {
         ) : <Button title={`Remove ${customer.name}`} variant="ghost" small onPress={() => setCustomer(null)} />}
       </View>
 
+      <InlineError message={errs.customer} />
+
       <Stepper label={`Cartons (360 eggs) ${price('CARTON') ? `· ${formatMoney(price('CARTON'), cur)} each` : ''}`} value={cartons} onChange={setCartons} max={100000} />
       <Stepper label={`Crates (30 eggs) ${price('CRATE') ? `· ${formatMoney(price('CRATE'), cur)} each` : ''}`} value={crates} onChange={setCrates} max={100000} />
       <Stepper label={`Single eggs ${price('EGG') ? `· ${formatMoney(price('EGG'), cur)} each` : ''}`} value={eggs} onChange={setEggs} max={100000} />
+      <InlineError message={errs.items} />
 
       {canDiscount ? <Field label="Discount (optional)" value={discount} onChangeText={setDiscount} keyboardType="decimal-pad" hint="Managers only" /> : null}
 
@@ -109,8 +118,8 @@ export default function NewSale() {
       </Card>
       {overStock ? <Card tone="warn"><Text bold>This may be more than the stock we know about</Text><Text>Estimated stock is {formatInt(unsentStock)} eggs. You can still save; if the server cannot cover it, the sale will wait in Sync for your decision.</Text></Card> : null}
 
-      <Segmented label="Payment" value={pay} onChange={setPay} options={[{ value: 'FULL', label: 'Paid in full' }, { value: 'PART', label: 'Part payment' }, { value: 'CREDIT', label: 'On credit' }]} />
-      {pay === 'PART' ? <Field label="Amount paid now" value={paidNow} onChangeText={setPaidNow} keyboardType="decimal-pad" /> : null}
+      <Segmented label="Payment" value={pay} onChange={(v) => { setPay(v); setErrs((e) => ({ ...e, customer: undefined, paid: undefined })); }} options={[{ value: 'FULL', label: 'Paid in full' }, { value: 'PART', label: 'Part payment' }, { value: 'CREDIT', label: 'On credit' }]} />
+      {pay === 'PART' ? <Field label="Amount paid now" icon="cash-outline" value={paidNow} onChangeText={(t) => { setPaidNow(t); setErrs((e) => ({ ...e, paid: undefined })); }} error={errs.paid} keyboardType="decimal-pad" /> : null}
       {pay !== 'CREDIT' ? <Segmented label="Paid by" value={method} onChange={setMethod} options={METHODS.map((m) => ({ value: m.value, label: m.label }))} /> : null}
       {pay !== 'FULL' ? <Text size="small" muted>Credit must be switched on by an administrator and allowed for this customer; otherwise the server will refuse the sale.</Text> : null}
 

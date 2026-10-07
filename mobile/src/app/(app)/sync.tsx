@@ -5,7 +5,7 @@ import { formatDateTime, timeAgo } from '../../lib/format';
 import { useApp } from '../../state/app';
 import { useAppStore } from '../../state/store';
 import type { OutboxItem } from '../../sync';
-import { Badge, Button, Card, Row, Screen, SectionTitle, Text } from '../../ui/components';
+import { Badge, Button, Card, InlineError, Row, Screen, SectionTitle, Text } from '../../ui/components';
 
 const TITLE: Record<string, string> = {
   'production.create': 'Production record', 'sale.create': 'Sale', 'expense.create': 'Expense', 'customer.create': 'New customer', 'payment.create': 'Payment',
@@ -55,7 +55,7 @@ export default function SyncScreen() {
       <Row style={{ justifyContent: 'space-between' }}><Text bold>{TITLE[i.type] ?? i.type}</Text><Badge tone={STATUS[i.status].tone} label={STATUS[i.status].label} /></Row>
       <Text muted>{summarize(i)}</Text>
       <Text size="small" muted>Saved {formatDateTime(i.createdAt)}{i.attempts ? ` · ${i.attempts} attempt${i.attempts === 1 ? '' : 's'}` : ''}</Text>
-      {i.lastError?.message ? <Text color="#B42318">{i.lastError.message}</Text> : null}
+      {i.lastError?.message ? <InlineError message={i.lastError.message} /> : null}
       {['conflict', 'rejected', 'blocked'].includes(i.status) ? (
         <Row style={{ flexWrap: 'wrap' }}>
           <Button title="Try again" variant="secondary" small onPress={() => void services.engine.resolve(i.clientId, 'retry').then(load).catch((e) => Alert.alert('Could not retry', describeError(e)))} />

@@ -1,15 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert } from 'react-native';
 import { describeError } from '../../../lib/errors';
 import { useEndpoints } from '../../../state/app';
-import { Button, Card, Field, Loading, Screen, Segmented, Text } from '../../../ui/components';
+import { Button, Card, Field, InlineError, Loading, Screen, Segmented, Text } from '../../../ui/components';
+import { useToast } from '../../../ui/toast';
 
 export default function Invite() {
   const api = useEndpoints();
   const router = useRouter();
   const qc = useQueryClient();
+  const toast = useToast();
   const roles = useQuery({ queryKey: ['admin', 'roles'], queryFn: () => api.admin.roles() });
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
@@ -24,7 +25,7 @@ export default function Invite() {
     try {
       await api.admin.invite({ email: email.trim(), fullName: fullName.trim(), ...(phone.trim() ? { phone: phone.trim() } : {}), roleCodes: [role] });
       await qc.invalidateQueries({ queryKey: ['admin', 'users'] });
-      Alert.alert('Invitation sent', `${email.trim()} will get an email with a link to choose a password.`);
+      toast.show(`Invitation sent to ${email.trim()}`);
       router.back();
     } catch (e) { setError(describeError(e)); } finally { setBusy(false); }
   }
@@ -36,7 +37,7 @@ export default function Invite() {
       <Field label="Phone (optional)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
       {roles.isLoading ? <Loading /> : <Segmented label="Role" value={role} onChange={setRole} options={(roles.data ?? []).map((r) => ({ value: r.code, label: r.name }))} />}
       <Card tone="info"><Text size="small">Give people only the role they need. Production staff cannot see money; sales staff cannot see expenses. Owners and administrators must use two-step sign-in.</Text></Card>
-      {error ? <Text color="#B42318">{error}</Text> : null}
+      <InlineError message={error} />
       <Button title="Send invitation" onPress={() => void send()} busy={busy} />
     </Screen>
   );
