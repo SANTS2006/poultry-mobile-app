@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Animated, Modal, Pressable, View, useWindowDimensions } from 'react-native';
+import { Animated, Pressable, View, useWindowDimensions } from 'react-native';
 import { Button, Text } from './components';
 import { GlassSurface } from './glass';
 import { errorHaptic, successHaptic, warnHaptic } from './haptics';
 import { Icon, type IconName } from './icon';
+import { OverlayModal } from './overlay-modal';
 import { radius, space, useColors } from './theme';
 
 export type DialogTone = 'info' | 'success' | 'warn' | 'danger';
@@ -31,7 +32,7 @@ export function DialogShell({ visible, onClose, tone = 'info', icon, title, mess
   const fg = { info: c.info, success: c.ok, warn: c.warn, danger: c.danger }[tone];
   const bg = { info: c.infoSoft, success: c.okSoft, warn: c.warnSoft, danger: c.dangerSoft }[tone];
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={dismissable ? onClose : undefined} statusBarTranslucent>
+    <OverlayModal visible={visible} onRequestClose={dismissable ? onClose : undefined}>
       <Pressable accessibilityLabel="Close dialog" onPress={dismissable ? onClose : undefined} style={{ flex: 1, backgroundColor: c.overlay, alignItems: 'center', justifyContent: 'center', padding: space.xl }}>
         <Animated.View accessibilityViewIsModal style={{ width: Math.min(360, width - space.xl * 2), opacity: enter, transform: [{ scale: enter.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }] }}>
           <Pressable onPress={() => undefined}>
@@ -46,7 +47,7 @@ export function DialogShell({ visible, onClose, tone = 'info', icon, title, mess
           </Pressable>
         </Animated.View>
       </Pressable>
-    </Modal>
+    </OverlayModal>
   );
 }
 

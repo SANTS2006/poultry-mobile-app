@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Modal, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { OverlayModal } from './overlay-modal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnreadCount } from '../queries/hooks';
 import { useSignOut } from '../state/sign-out';
@@ -49,7 +50,7 @@ export function ProfileButton({ size = 34 }: { size?: number }) {
       <Pressable accessibilityRole="button" accessibilityLabel="Your profile menu" accessibilityState={{ expanded: open }} onPress={() => setOpen(true)} hitSlop={6} style={{ width: TOUCH, height: TOUCH, alignItems: 'center', justifyContent: 'center' }}>
         <Avatar name={user?.fullName ?? '?'} uri={user?.avatar} size={size} />
       </Pressable>
-      <Modal visible={open} transparent animationType="fade" onRequestClose={close} statusBarTranslucent>
+      <OverlayModal visible={open} onRequestClose={close}>
         <Pressable accessibilityLabel="Close menu" style={{ flex: 1, backgroundColor: c.overlay }} onPress={close}>
           <Pressable accessibilityViewIsModal onPress={() => undefined} style={{ position: 'absolute', top: insets.top + 56, right: space.lg, width: 280 }}>
             <GlassSurface solid radius={radius.lg} style={elevation.float}>
@@ -67,7 +68,7 @@ export function ProfileButton({ size = 34 }: { size?: number }) {
             </GlassSurface>
           </Pressable>
         </Pressable>
-      </Modal>
+      </OverlayModal>
     </>
   );
 }
