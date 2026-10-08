@@ -1,7 +1,6 @@
 import { Stack } from 'expo-router';
 import { RecoveryCodes } from '../../features/RecoveryCodes';
 import { useAuthFlow } from '../../state/auth-flow';
-import { IS_IOS } from '../../ui/glass';
 import { CloseButton } from '../../ui/sheet-screen';
 import { typeScale, useColors } from '../../ui/theme';
 
@@ -15,8 +14,8 @@ export default function AppLayout() {
   if (codes) return <RecoveryCodes codes={codes} onDone={() => useAuthFlow.getState().clear()} />;
   return (
     <Stack screenOptions={{
-      // iOS: no fixed header colour, so the system draws its own bar (liquid glass on iOS 26). Elsewhere the header matches the screen.
-      ...(IS_IOS ? {} : { headerStyle: { backgroundColor: c.bg } }), headerShadowVisible: false, headerTintColor: c.text, headerTitleStyle: { ...typeScale.heading, color: c.text },
+      // The header always matches the screen, so dark mode never shows a white bar behind the title and status bar.
+      headerStyle: { backgroundColor: c.bg }, headerShadowVisible: false, headerTintColor: c.text, headerTitleStyle: { ...typeScale.heading, color: c.text },
       headerBackButtonDisplayMode: 'minimal', contentStyle: { backgroundColor: c.bg }, animation: 'slide_from_right',
     }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

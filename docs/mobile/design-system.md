@@ -66,3 +66,9 @@ The server re-validates all input; the phone-side rules only save a round trip. 
 
 ## iOS look
 `ui/glass.tsx`: `GlassSurface` is the system **liquid glass** on iOS 26+, a system blur material on earlier iOS, and a plain elevated card on Android. Cards, stat tiles, dialogs, the profile menu, the busy overlay and the floating tab bar use it; a soft colour backdrop (`GlassBackdrop`) sits behind screens so the glass has something to refract. iOS also gets continuous (squircle) corners, light haptics on buttons/tabs/toggles, native sheets, and the system's own navigation bar (no fixed header colour). **Unverified**: none of this has been seen on a device; the glass effect needs iOS 26 and a development or store build (Expo Go on an older iOS shows the blur fallback).
+
+## iOS dark mode and start-up (added)
+- The root view, safe-area provider, native window (`expo-system-ui`) and every stack's `contentStyle` use the theme background, so no white shows behind the header or during transitions in dark mode. The status bar style is explicit (light icons in dark mode, dark icons in light mode).
+- Stack headers always use the theme background on iOS too (they previously used the system bar, which could stay white).
+- The loading screen (`BootSplash`) uses fixed brand colours so it is visible in either mode. The privacy cover starts hidden and only appears when the app goes inactive/background, so a cold start can no longer be stuck on a blank cover.
+- Not verified on an iPhone. Rebuild the dev client (splash settings in `app.json` are native) or restart with `npx expo start -c`.

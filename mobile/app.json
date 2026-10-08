@@ -30,7 +30,7 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      ["expo-splash-screen", { "backgroundColor": "#0F5132", "image": "./assets/images/splash-icon.png", "imageWidth": 120 }],
+      ["expo-splash-screen", { "backgroundColor": "#0F5132", "image": "./assets/images/splash-icon.png", "imageWidth": 120, "dark": { "backgroundColor": "#0F5132", "image": "./assets/images/splash-icon.png" } }],
       ["expo-local-authentication", { "faceIDPermission": "Use Face ID to unlock Makarifor Poultry." }],
       ["expo-notifications", { "color": "#0F5132" }],
       ["expo-image-picker", { "photosPermission": "Choose a profile picture from your photos.", "cameraPermission": "Take a profile picture.", "microphonePermission": false }],

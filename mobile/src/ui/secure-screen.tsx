@@ -19,9 +19,9 @@ export function useSecureScreen(): void {
  */
 export function PrivacyShield() {
   const c = useColors();
-  const [covered, setCovered] = useState(AppState.currentState !== 'active');
+  const [covered, setCovered] = useState(false);
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (s) => setCovered(s !== 'active'));
+    const sub = AppState.addEventListener('change', (s) => setCovered(s === 'inactive' || s === 'background'));
     return () => sub.remove();
   }, []);
   if (!covered) return null;
