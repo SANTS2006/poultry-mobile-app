@@ -33,7 +33,8 @@ export class DashboardService {
 
     if (has('production.read')) out.production = await this.production(farmId, today, start);
     if (has('inventory.read')) out.inventory = await this.inventory.snapshot(farmId);
-    if (has('sales.read')) out.sales = await this.sales(farmId, today, start);
+    if (has('sales.read')) out.sales = await this.sales(farmId, today, start, monthStart, has('customers.read'));
+    if (has('customers.read')) out.customers = await this.customers(monthStart);
     if (has('expenses.read')) out.expenses = await this.expenses(farmId, today, start, monthStart);
     if (has('payments.read') && has('expenses.read')) out.cash = await this.cash(farmId, today, tz);
     if (has('customers.financial')) out.receivables = await this.receivables(farmId);
@@ -53,10 +54,25 @@ export class DashboardService {
       this.prisma.productionRecord.groupBy({ by: ['shiftId'], where: { farmId, status: 'ACTIVE', productionDate: toDbDate(today) }, _sum: { totalEggs: true } }),
       this.prisma.productionRecord.groupBy({ by: ['productionDate'], where: { farmId, status: 'ACTIVE', productionDate: { gte: toDbDate(start), lte: toDbDate(today) } }, _sum: { totalEggs: true } }),
     ]);
+    const weekStart = addDays(today, -6);
+    const monthStart = `${today.slice(0, 7)}-01`;
+    const [week, month, recordsToday, recordsMonth] = await Promise.all([
+      this.prisma.productionRecord.aggregate({ where: { farmId, status: 'ACTIVE', productionDate: { gte: toDbDate(weekStart), lte: toDbDate(today) } }, _sum: { totalEggs: true } }),
+      this.prisma.productionRecord.aggregate({ where: { farmId, status: 'ACTIVE', productionDate: { gte: toDbDate(monthStart), lte: toDbDate(today) } }, _sum: { totalEggs: true } }),
+      this.prisma.productionRecord.count({ where: { farmId, status: 'ACTIVE', productionDate: toDbDate(today) } }),
+      this.prisma.productionRecord.count({ where: { farmId, status: 'ACTIVE', productionDate: { gte: toDbDate(monthStart), lte: toDbDate(today) } } }),
+    ]);
     const recorded = await this.prisma.productionRecord.findMany({ where: { farmId, status: 'ACTIVE', productionDate: toDbDate(today) }, select: { coopId: true, shiftId: true } });
     const done = new Set(recorded.map((r) => `${r.coopId}:${r.shiftId}`));
     const trendMap = new Map(trend.map((t) => [fromDbDate(t.productionDate), t._sum.totalEggs ?? 0]));
+    const series = days(start, today).map((date) => ({ date, eggs: trendMap.get(date) ?? 0 }));
+    const best = series.reduce((a, b) => (b.eggs > a.eggs ? b : a), series[0]!);
+    const weekEggs = week._sum.totalEggs ?? 0;
     return {
+      yesterdayEggs: trendMap.get(addDays(today, -1)) ?? 0,
+      weekEggs, averagePerDay7: Math.round(weekEggs / 7), monthEggs: month._sum.totalEggs ?? 0,
+      recordsToday, recordsMonth, activeCoops: coops.length,
+      bestDay14: best && best.eggs > 0 ? best : null,
       todayEggs: byCoop.reduce((a, c) => a + (c._sum.totalEggs ?? 0), 0),
       byCoop: coops.map((c) => ({ coopId: c.id, name: c.name, eggs: byCoop.find((x) => x.coopId === c.id)?._sum.totalEggs ?? 0 })),
       byShift: shifts.map((s) => ({ shift: s.code, eggs: byShift.find((x) => x.shiftId === s.id)?._sum.totalEggs ?? 0 })),
@@ -65,18 +81,44 @@ export class DashboardService {
     };
   }
 
-  private async sales(farmId: string, today: string, start: string) {
+  private async sales(farmId: string, today: string, start: string, monthStart: string, withCustomers: boolean) {
     const where = (extra: Prisma.SaleWhereInput = {}): Prisma.SaleWhereInput => ({ farmId, status: 'ACTIVE', ...extra });
-    const [t, eggs, trend] = await Promise.all([
+    const weekStart = addDays(today, -6);
+    const [t, eggs, trend, week, month, monthEggs, unpaid, top] = await Promise.all([
       this.prisma.sale.aggregate({ where: where({ saleDate: toDbDate(today) }), _sum: { total: true }, _count: true }),
       this.prisma.saleItem.aggregate({ where: { sale: where({ saleDate: toDbDate(today) }) }, _sum: { baseEggs: true } }),
       this.prisma.sale.groupBy({ by: ['saleDate'], where: where({ saleDate: { gte: toDbDate(start), lte: toDbDate(today) } }), _sum: { total: true } }),
+      this.prisma.sale.aggregate({ where: where({ saleDate: { gte: toDbDate(weekStart), lte: toDbDate(today) } }), _sum: { total: true }, _count: true }),
+      this.prisma.sale.aggregate({ where: where({ saleDate: { gte: toDbDate(monthStart), lte: toDbDate(today) } }), _sum: { total: true }, _count: true }),
+      this.prisma.saleItem.aggregate({ where: { sale: where({ saleDate: { gte: toDbDate(monthStart), lte: toDbDate(today) } }) }, _sum: { baseEggs: true } }),
+      this.prisma.sale.count({ where: where({ paymentStatus: { not: 'PAID' } }) }),
+      withCustomers
+        ? this.prisma.sale.groupBy({ by: ['customerId'], where: where({ customerId: { not: null }, saleDate: { gte: toDbDate(monthStart), lte: toDbDate(today) } }), _sum: { total: true }, orderBy: { _sum: { total: 'desc' } }, take: 3 })
+        : Promise.resolve([]),
     ]);
+    const names = top.length ? await this.prisma.customer.findMany({ where: { id: { in: top.map((x) => x.customerId!).filter(Boolean) } }, select: { id: true, name: true } }) : [];
     const m = new Map(trend.map((x) => [fromDbDate(x.saleDate), x._sum.total ?? D0]));
+    const monthCount = month._count;
     return {
       todayRevenue: (t._sum.total ?? D0).toString(), todayCount: t._count, todayEggsSold: eggs._sum.baseEggs ?? 0,
+      weekRevenue: (week._sum.total ?? D0).toString(), weekCount: week._count,
+      monthRevenue: (month._sum.total ?? D0).toString(), monthCount, monthEggsSold: monthEggs._sum.baseEggs ?? 0,
+      averageSaleMonth: monthCount ? (month._sum.total ?? D0).div(monthCount).toDecimalPlaces(2).toString() : '0',
+      unpaidSales: unpaid,
+      topCustomersMonth: top.map((x) => ({ name: names.find((n) => n.id === x.customerId)?.name ?? 'Customer', total: (x._sum.total ?? D0).toString() })),
       last14Days: days(start, today).map((date) => ({ date, revenue: (m.get(date) ?? D0).toString() })),
     };
+  }
+
+  /** Counts only: money owed by customers stays behind `customers.financial`. */
+  private async customers(monthStart: string) {
+    const [total, regular, wholesale, added] = await Promise.all([
+      this.prisma.customer.count({ where: { deletedAt: null } }),
+      this.prisma.customer.count({ where: { deletedAt: null, type: 'REGULAR' } }),
+      this.prisma.customer.count({ where: { deletedAt: null, type: 'WHOLESALE' } }),
+      this.prisma.customer.count({ where: { deletedAt: null, createdAt: { gte: toDbDate(monthStart) } } }),
+    ]);
+    return { total, regular, wholesale, addedThisMonth: added };
   }
 
   private async expenses(farmId: string, today: string, start: string, monthStart: string) {

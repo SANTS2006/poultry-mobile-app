@@ -26,6 +26,6 @@ screens, which are only compiled/bundled and partly component-tested (see gaps).
 
 ## Honest gaps
 - No device/emulator tests (Detox/Maestro), no screenshot or accessibility tests; screens are compile-checked, bundled and partially component-tested.
-- Push delivery, SMTP, Neon and EAS builds are untested against real services.
+- Push delivery, Brevo delivery, Neon and EAS builds are untested against real services.
 - Performance was measured on one shared machine with local PostgreSQL, not Neon over the network; the sales report loads rows into memory (≈3 s for a year of 30k sales) — a SQL aggregation path is the next optimisation if a farm outgrows this.
 - No formal penetration test or third-party security review has been done; the suite is regression protection, not a certification.

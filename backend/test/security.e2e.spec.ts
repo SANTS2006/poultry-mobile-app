@@ -34,7 +34,7 @@ describe('Security regression suite (e2e, real PostgreSQL)', () => {
         .filter((r) => r.p.startsWith('/v1/') && !r.p.includes('*'));
       expect(routes.length).toBeGreaterThan(80); // proves the walk actually found the API
       const PUBLIC = new Set(['/health/live', '/health/ready', '/v1/auth/login', '/v1/auth/mfa/verify', '/v1/auth/refresh', '/v1/auth/verify-email',
-        '/v1/auth/resend-verification', '/v1/auth/accept-invite', '/v1/auth/forgot-password', '/v1/auth/reset-password', '/v1/auth/mfa/enroll', '/v1/auth/mfa/confirm', '/v1/_probe/open']);
+        '/v1/auth/resend-verification', '/v1/auth/first-password', '/v1/auth/forgot-password', '/v1/auth/reset-password', '/v1/auth/mfa/enroll', '/v1/auth/mfa/confirm', '/v1/_probe/open']);
       const uuid = '11111111-1111-4111-8111-111111111111';
       const leaks: string[] = [];
       for (const r of routes) {

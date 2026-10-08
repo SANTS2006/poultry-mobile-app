@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { AuditService } from '../src/audit/audit.service';
 import { PERMISSIONS } from '../src/common/permissions';
 import { MailService } from '../src/mail/mail.service';
+import { temporaryPassword } from '../src/users/temp-password';
 import { UsersService } from '../src/users/users.service';
 import { api, bearer, createApp, login, makeUser, PASSWORD, seed, signIn, totpAt, uniqueEmail } from './helpers';
 
@@ -286,18 +287,54 @@ describe('Authentication, sessions, MFA, RBAC (e2e, real PostgreSQL)', () => {
 
   // ───────────────────────── user administration ─────────────────────────
   describe('invitation and user management', () => {
-    it('invites a user, emails a single-use link, enforces password policy, and activates on acceptance', async () => {
+    it('invites a user with a temporary password by e-mail, forces a new password at first sign-in, then continues as normal', async () => {
       const email = uniqueEmail('invitee');
-      await api(app).post('/v1/users/invite').set(bearer(adminToken)).send({ email, fullName: 'New Person', roleCodes: ['SALES_STAFF'] }).expect(201);
-      const token = tokenFromMail(mail, email);
-      await login(app, email, PASSWORD).expect(401); // no password yet
-      await api(app).post('/v1/auth/accept-invite').send({ token, password: 'short' }).expect(400);
-      const retry = tokenFromMail(mail, email); // a fresh link is issued after a failed attempt
-      expect(retry).not.toBe(token);
-      await api(app).post('/v1/auth/accept-invite').send({ token: retry, password: PASSWORD }).expect(204);
-      await api(app).post('/v1/auth/accept-invite').send({ token: retry, password: PASSWORD }).expect(400); // single use
-      const s = await signIn(app, email);
-      expect(s.body.user.roles).toEqual(['SALES_STAFF']);
+      const res = await api(app).post('/v1/users/invite').set(bearer(adminToken)).send({ email, fullName: 'New Person', roleCodes: ['SALES_STAFF'] }).expect(201);
+      expect(res.body.emailSent).toBe(true);
+      const msg = [...mail.outbox].reverse().find((m) => m.to === email)!;
+      const temp = temporaryPassword('Makarifor Agriculture');
+      expect(temp).toMatch(/^MA\d{4}$/);
+      // everything the invitee needs is in the message: business, role, sign-in email, temporary password, expiry
+      for (const needle of ['Makarifor Agriculture', 'Sales Staff', email, temp, '72 hours']) expect(msg.text).toContain(needle);
+      expect(msg.html).toContain(temp);
+      expect(msg.html).toContain('Welcome to Makarifor Agriculture');
+      // the temporary password gives no session, only the right to choose a real password
+      const first = await login(app, email, temp).expect(200);
+      expect(first.body.status).toBe('password_change_required');
+      expect(first.body.tokens).toBeUndefined();
+      const passwordToken = first.body.passwordToken;
+      await api(app).get('/v1/auth/me').set(bearer(passwordToken)).expect(401); // not an access token
+      await api(app).post('/v1/auth/first-password').send({ passwordToken, newPassword: 'short' }).expect(400);
+      await api(app).post('/v1/auth/first-password').send({ passwordToken, newPassword: temp }).expect(400);
+      const done = await api(app).post('/v1/auth/first-password').send({ passwordToken, newPassword: PASSWORD }).expect(200);
+      expect(done.body.status).toBe('authenticated');
+      expect(done.body.user.roles).toEqual(['SALES_STAFF']);
+      await api(app).post('/v1/auth/first-password').send({ passwordToken, newPassword: PASSWORD }).expect(401); // single purpose, single use
+      await login(app, email, temp).expect(401); // the temporary password is gone
+      expect((await signIn(app, email)).body.user.roles).toEqual(['SALES_STAFF']);
+    });
+
+    it('an expired temporary password is refused and a resent invitation issues a fresh one', async () => {
+      const email = uniqueEmail('exp');
+      const u = await api(app).post('/v1/users/invite').set(bearer(adminToken)).send({ email, fullName: 'Late Person', roleCodes: ['SALES_STAFF'] }).expect(201);
+      const temp = temporaryPassword('Makarifor Agriculture');
+      await prisma.user.update({ where: { id: u.body.id }, data: { tempPasswordExpiresAt: new Date(Date.now() - 1000) } });
+      const late = await login(app, email, temp).expect(403);
+      expect(late.body.message).toMatch(/expired/);
+      const before = mail.outbox.length;
+      const again = await api(app).post(`/v1/users/${u.body.id}/resend-invite`).set(bearer(adminToken)).expect(200);
+      expect(again.body.emailSent).toBe(true);
+      expect(mail.outbox.length).toBe(before + 1);
+      expect((await login(app, email, temp).expect(200)).body.status).toBe('password_change_required');
+    });
+
+    it('a user who already set their own password cannot be re-invited, and wrong temporary passwords count toward lockout', async () => {
+      const done = await makeUser(prisma, { roles: ['SALES_STAFF'] });
+      await api(app).post(`/v1/users/${done.id}/resend-invite`).set(bearer(adminToken)).expect(400);
+      const email = uniqueEmail('guess');
+      await api(app).post('/v1/users/invite').set(bearer(adminToken)).send({ email, fullName: 'Guess Me', roleCodes: ['SALES_STAFF'] }).expect(201);
+      for (let i = 0; i < 5; i++) await login(app, email, 'XX2026').expect(401);
+      await login(app, email, temporaryPassword('Makarifor Agriculture')).expect(429); // locked out: guessing the pattern does not help
     });
 
     it('rejects duplicate e-mails (case-insensitively) and unknown roles', async () => {
@@ -305,14 +342,6 @@ describe('Authentication, sessions, MFA, RBAC (e2e, real PostgreSQL)', () => {
       await api(app).post('/v1/users/invite').set(bearer(adminToken)).send({ email, fullName: 'Dup One', roleCodes: ['SALES_STAFF'] }).expect(201);
       await api(app).post('/v1/users/invite').set(bearer(adminToken)).send({ email: email.toUpperCase(), fullName: 'Dup Two', roleCodes: ['SALES_STAFF'] }).expect(409);
       await api(app).post('/v1/users/invite').set(bearer(adminToken)).send({ email: uniqueEmail(), fullName: 'No Role', roleCodes: ['NOPE'] }).expect(400);
-    });
-
-    it('rejects expired invitation tokens', async () => {
-      const email = uniqueEmail('exp');
-      await api(app).post('/v1/users/invite').set(bearer(adminToken)).send({ email, fullName: 'Late Person', roleCodes: ['SALES_STAFF'] }).expect(201);
-      const token = tokenFromMail(mail, email);
-      await prisma.emailToken.updateMany({ where: { user: { email } }, data: { expiresAt: new Date(Date.now() - 1000) } });
-      await api(app).post('/v1/auth/accept-invite').send({ token, password: PASSWORD }).expect(400);
     });
 
     it('prevents privilege escalation: an Owner cannot mint, promote, edit or disable a Super Admin', async () => {

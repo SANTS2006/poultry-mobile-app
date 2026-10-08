@@ -74,8 +74,13 @@ describe('Realtime: authenticated WebSockets, topic authorisation, live dashboar
   // ───────────────────────── live dashboard (REST) ─────────────────────────
   describe('dashboard (deterministic data)', () => {
     it('is permission-filtered and computed from the database', async () => {
-      await get('/dashboard', 'prod').expect(403);
-      await get('/dashboard', 'sales').expect(403);
+      // production and sales staff get a summary of what they may see (and nothing else)
+      const p0 = (await get('/dashboard', 'prod').expect(200)).body;
+      expect(p0.production).toBeDefined();
+      expect([p0.sales, p0.expenses, p0.cash, p0.receivables, p0.inventory]).toEqual([undefined, undefined, undefined, undefined, undefined]);
+      const s0 = (await get('/dashboard', 'sales').expect(200)).body;
+      expect(s0.sales).toBeDefined();
+      expect([s0.production, s0.expenses, s0.cash, s0.receivables]).toEqual([undefined, undefined, undefined, undefined]);
       await api(app).get('/v1/dashboard').expect(401);
 
       // data: production 570 (coop 1 morning) + 300 (coop 2 evening); a cash sale, a part-paid credit sale, an expense

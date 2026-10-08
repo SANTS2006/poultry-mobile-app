@@ -9,6 +9,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 
 export const DEMO_PASSWORD = 'demo-password-tractor-2026';
 const USERS = [
+  { email: 'superadmin@demo.local', name: 'Demo Super Admin', role: 'SUPER_ADMIN' },
   { email: 'owner@demo.local', name: 'Demo Owner', role: 'OWNER' },
   { email: 'manager@demo.local', name: 'Demo Manager', role: 'FARM_MANAGER' },
   { email: 'production@demo.local', name: 'Demo Production Staff', role: 'PRODUCTION_STAFF' },

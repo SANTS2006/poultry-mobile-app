@@ -40,9 +40,9 @@ export class ResetPasswordDto extends TokenDto {
   @IsString() @MaxLength(128) newPassword!: string;
 }
 
-export class AcceptInviteDto extends TokenDto {
-  @IsString() @MaxLength(128) password!: string;
-  @IsOptional() @Transform(trim) @IsString() @Length(2, 100) fullName?: string;
+export class FirstPasswordDto {
+  @IsString() @Length(20, 2000) passwordToken!: string;
+  @IsString() @MaxLength(128) newPassword!: string;
 }
 
 export class ChangePasswordDto {

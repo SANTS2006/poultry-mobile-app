@@ -1,0 +1,4 @@
+ALTER TABLE "User" ADD COLUMN "mustChangePassword" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "User" ADD COLUMN "tempPasswordExpiresAt" TIMESTAMPTZ;
+ALTER TABLE "Coop" ADD COLUMN "capacity" INTEGER;
+ALTER TABLE "Coop" ADD COLUMN "notes" TEXT;

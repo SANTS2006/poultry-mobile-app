@@ -2,7 +2,9 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthUser, RequestMeta } from '../auth/auth.types';
-import { EmailTokenService } from '../auth/email-token.service';
+import { PasswordService } from '../common/crypto/password.service';
+import { MailComposer } from '../mail/mail-composer.service';
+import { TEMP_PASSWORD_TTL_MS, temporaryPassword } from './temp-password';
 import { MfaService } from '../auth/mfa.service';
 import { SessionService } from '../auth/session.service';
 import { DomainEvents } from '../domain/events.service';
@@ -28,7 +30,8 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly emailTokens: EmailTokenService,
+    private readonly passwords: PasswordService,
+    private readonly mailer: MailComposer,
     private readonly sessions: SessionService,
     private readonly mfa: MfaService,
     private readonly events: DomainEvents,
@@ -59,34 +62,65 @@ export class UsersService {
     const roles = await this.resolveAssignableRoles(actor, dto.roleCodes);
     const exists = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (exists) throw new ConflictException('A user with this email already exists.');
-    const { user, token } = await this.prisma.$transaction(async (tx) => {
+    const business = await this.mailer.businessName();
+    const temp = temporaryPassword(business);
+    const passwordHash = await this.passwords.hash(temp);
+    const user = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
-          email: dto.email, status: 'INVITED',
+          email: dto.email, status: 'INVITED', passwordHash, mustChangePassword: true, tempPasswordExpiresAt: new Date(Date.now() + TEMP_PASSWORD_TTL_MS),
+          emailVerified: true, // the temporary password is delivered by e-mail; signing in with it proves the mailbox
           profile: { create: { fullName: dto.fullName, phone: dto.phone } },
           roles: { create: roles.map((r) => ({ roleId: r.id })) },
         },
       });
-      const token = await this.emailTokens.issue(user.id, 'INVITE', tx);
       await this.audit.record({
         action: 'user.invited', userId: actor.id, userName: actor.fullName, entityType: 'user', entityId: user.id,
         after: { email: dto.email, roles: dto.roleCodes }, ip: meta.ip, requestId: meta.requestId,
       }, tx);
-      return { user, token };
+      return user;
     });
-    await this.emailTokens.sendLink(user.email, 'INVITE', token);
+    const emailSent = await this.sendInvitation(user.email, dto.fullName, roles, temp, actor.fullName);
     this.events.emit({ name: 'admin.event', entityId: user.id, actorId: actor.id, data: { kind: 'user_created' } });
-    return this.get(user.id);
+    return { ...(await this.get(user.id)), emailSent };
   }
 
-  async resendInvite(actor: AuthUser, id: string, meta: RequestMeta) {
-    const u = await this.prisma.user.findFirst({ where: { id, deletedAt: null } });
+  /** Issues a fresh temporary password (and a fresh 72 h window) and e-mails it again. */
+  async resendInvite(actor: AuthUser, id: string, meta: RequestMeta): Promise<boolean> {
+    const u = await this.prisma.user.findFirst({ where: { id, deletedAt: null }, include: { profile: true, roles: { include: { role: true } } } });
     if (!u) throw new NotFoundException('User not found.');
-    if (u.status !== 'INVITED') throw new BadRequestException('This user has already accepted their invitation.');
+    if (u.status !== 'INVITED' || !u.mustChangePassword) throw new BadRequestException('This user has already signed in and set their own password.');
     await this.assertCanManage(actor, id);
-    const token = await this.emailTokens.issue(id, 'INVITE');
-    await this.emailTokens.sendLink(u.email, 'INVITE', token);
+    const temp = temporaryPassword(await this.mailer.businessName());
+    await this.prisma.user.update({ where: { id }, data: { passwordHash: await this.passwords.hash(temp), tempPasswordExpiresAt: new Date(Date.now() + TEMP_PASSWORD_TTL_MS), failedAttempts: 0, lockedUntil: null } });
     await this.audit.record({ action: 'user.invite_resent', userId: actor.id, userName: actor.fullName, entityType: 'user', entityId: id, ip: meta.ip, requestId: meta.requestId });
+    return this.sendInvitation(u.email, u.profile?.fullName ?? u.email, u.roles.map((r) => r.role), temp, actor.fullName);
+  }
+
+  /** The invitation e-mail carries everything the person needs: who invited them, their role and what it allows, how to sign in and for how long. */
+  async sendInvitation(to: string, fullName: string, roles: { name: string; description?: string | null }[], temp: string, invitedBy: string): Promise<boolean> {
+    const business = await this.mailer.businessName();
+    const hours = TEMP_PASSWORD_TTL_MS / 3600_000;
+    return this.mailer.send(to, `You have been invited to ${business}`, {
+      preheader: `${invitedBy} invited you to ${business}. Your temporary password is inside.`,
+      heading: `Welcome to ${business}`,
+      greeting: `Hello ${fullName},`,
+      paragraphs: [`${invitedBy} has created an account for you on the ${business} poultry management app.`],
+      details: [
+        { label: 'Business', value: business },
+        { label: roles.length > 1 ? 'Your roles' : 'Your role', value: roles.map((r) => r.name).join(', ') },
+        ...(roles.some((r) => r.description) ? [{ label: 'What this role does', value: roles.map((r) => r.description).filter(Boolean).join(' ') }] : []),
+        { label: 'Sign-in email', value: to },
+        { label: 'Temporary password', value: temp, emphasis: true },
+        { label: 'Valid for', value: `${hours} hours` },
+      ],
+      steps: [
+        'Open the app and sign in with your email and the temporary password above.',
+        'You will be asked to choose your own password straight away (at least 12 characters).',
+        'If your role needs two-step sign-in, you will then be guided to set up an authenticator app.',
+      ],
+      note: `The temporary password only works to choose a new password, and stops working after ${hours} hours. If you were not expecting this invitation, ignore this email and tell ${invitedBy}.`,
+    });
   }
 
   async setRoles(actor: AuthUser, id: string, roleCodes: string[], reason: string, meta: RequestMeta) {

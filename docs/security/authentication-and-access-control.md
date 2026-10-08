@@ -49,7 +49,7 @@ removed. Unknown JSON properties are rejected on every route (mass-assignment).
 ## Invitations, verification, reset
 Single-use, expiring (invite 72 h, verify 24 h, reset 1 h), SHA-256-hashed-at-rest tokens consumed with an atomic compare-and-set.
 Forgot-password/resend answer identically for known and unknown addresses and skip disabled accounts. First administrator:
-`npm run bootstrap:admin -- --email … --name …` (refuses if a Super Admin exists; nobody types a password into a script).
+`npm run bootstrap:admin -- --email … --name …` (refuses if a Super Admin exists; nobody types a password into a script; the invitation carries a temporary password that must be replaced at first sign-in).
 
 ## Audit
 `AuditService` writes append-only rows (DB triggers block UPDATE/DELETE/TRUNCATE) chained by SHA-256 (`prevHash`/`hash`);
@@ -65,7 +65,7 @@ lockout, MFA, rate limits, rotation/reuse detection, no enumeration. A08 Integri
 ## Known limitations (honest list)
 - **Security notifications** (new device, password changed, MFA changes, lockout) are recorded as audit events now; push/in-app
   delivery is built in Phase 9. Password-change and reset already send an e-mail.
-- E-mail delivery is only exercised through an in-memory outbox in tests; **real SMTP is unverified** until you configure `EMAIL_*`.
+- E-mail delivery is only exercised through an in-memory outbox in tests; **real Brevo delivery is unverified** until you configure `BREVO_API_KEY` and a verified `EMAIL_FROM`.
 - After 5 failed attempts the API answers 429 for that account, which confirms the account exists to someone who guesses 5 times;
   the per-IP throttle limits the reach. Accepting this trade-off so real users learn why they are locked out.
 - Rate-limit counters are in process memory: fine for one instance; use a Redis store before running multiple instances.
@@ -73,3 +73,9 @@ lockout, MFA, rate limits, rotation/reuse detection, no enumeration. A08 Integri
   mobile client must serialise refreshes — planned in the mobile phase).
 - Audit appends are serialised by an advisory lock: correct and simple, but a throughput ceiling for very high write rates.
 - Biometric unlock, secure device storage and screen protection belong to the mobile phase and are not part of this one.
+
+## Invitations and the temporary password (current design)
+- An administrator invites a person (name, e-mail, role). The system creates the account with a **temporary password = initials of the business name + the year** (for example `MA2026`) and e-mails it through Brevo together with the business name, the person's role and what it allows, their sign-in e-mail, and the expiry. The account is marked `mustChangePassword`.
+- **This password is guessable by design** (anyone who knows the business name and the year could guess it). It is made safe to use by limiting what it can do: it never produces a session. Signing in with it returns only a 15-minute `pwd-change` token whose single use is `POST /v1/auth/first-password` (new password must pass the full policy and differ from the temporary one). It expires after **72 hours**, a wrong guess counts toward the normal progressive lockout, an administrator can resend (new expiry), and MFA enrolment for privileged roles still follows the password change.
+- The residual risk: until the invitee signs in, someone who knows the invitee's e-mail address and the pattern could set the first password before them (and would then also have to pass MFA enrolment if the role requires it). Mitigations: short expiry, audit entries (`auth.password.first_set`), and the invitee receives a "your password was set" e-mail. If this is unacceptable, switch to a random temporary password by changing `temporaryPassword()` in `backend/src/users/temp-password.ts` (one function).
+- There is no invitation link or accept-invitation screen any more.

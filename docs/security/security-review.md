@@ -12,8 +12,8 @@ regression suites listed in `docs/testing/test-strategy.md`. **This is a self-re
 | API4 Unrestricted resource consumption | Global throttling (120/min), strict limits on login/MFA/reset, export limit 10/min, 256 kB body limit, page size ≤100, report span ≤366 days and row caps, socket limits (5/user, message size, message rate) | throttle, 413, realtime limit tests |
 | API5 Broken function-level authorization | Deny-by-default guard: a route with no declaration is refused; every route declares a permission or `@AnyAuthenticated`/`@Public` | the running route table is walked in `security.e2e` |
 | API6 Unrestricted access to sensitive business flows | Idempotency keys, row-locked stock (no overselling, 40-way race tested), void-instead-of-edit with reasons, credit rules, adjustments audited | performance/concurrency suite |
-| API7 SSRF | The server makes outbound calls only to the Expo push API and the configured SMTP host; no user-supplied URLs are fetched | code review |
-| API8 Security misconfiguration | Helmet, CORS allow-list (empty default), env validation refuses weak secrets / non-TLS DB / missing SMTP in production, no stack traces, `THROTTLE_OFF` forbidden in production | env tests, headers test |
+| API7 SSRF | The server makes outbound calls only to the Expo push API and Brevo's API (api.brevo.com); no user-supplied URLs are fetched | code review |
+| API8 Security misconfiguration | Helmet, CORS allow-list (empty default), env validation refuses weak secrets / non-TLS DB / missing Brevo key/sender in production, no stack traces, `THROTTLE_OFF` forbidden in production | env tests, headers test |
 | API9 Improper inventory management | One versioned surface (`/v1`), no debug routes in production; probe routes exist only in the test harness | route walk |
 | API10 Unsafe consumption of APIs | Expo push responses are shape-validated; provider errors scrubbed before storage | notifications tests |
 

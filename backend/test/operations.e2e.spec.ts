@@ -627,4 +627,41 @@ describe('Core operations: production, inventory, sales, customers, payments, ex
       }
     });
   });
+
+  // ───────────────────────── growth: coops, and summaries for the role-limited users ─────────────────────────
+  describe('coop management and role summaries', () => {
+    it('only the owner and super admin can add, edit and retire coops; names are unique ignoring case; capacity is validated', async () => {
+      const created = (await post('/coops', 'owner', { name: 'Coop 9', capacity: 1200, notes: 'New layer house' }).expect(201)).body;
+      expect(created).toMatchObject({ name: 'Coop 9', capacity: 1200, notes: 'New layer house', active: true });
+      await post('/coops', 'admin', { name: 'coop 9' }).expect(409);
+      await post('/coops', 'owner', { name: 'Bad', capacity: 0 }).expect(400);
+      await post('/coops', 'owner', { name: 'Bad', capacity: 'many' }).expect(400);
+      for (const who of ['manager', 'prod', 'sales', 'acct'] as const) await post('/coops', who, { name: 'Sneaky' }).expect(403);
+      await patch(`/coops/${created.id}`, 'manager', { capacity: 5 }).expect(403);
+      const edited = (await patch(`/coops/${created.id}`, 'admin', { capacity: 1500, notes: null }).expect(200)).body;
+      expect(edited).toMatchObject({ capacity: 1500, notes: null });
+      await patch(`/coops/${created.id}`, 'owner', { name: 'Coop 1' }).expect(409);
+      expect((await patch(`/coops/${created.id}`, 'owner', { active: false }).expect(200)).body.active).toBe(false);
+      const list = (await get('/coops', 'prod').expect(200)).body as { name: string; capacity: number | null }[];
+      expect(list.find((c) => c.name === 'Coop 9')).toBeDefined(); // production staff can read the list (needed to record against a coop)
+      expect((await get('/dashboard', 'owner').expect(200)).body.production.activeCoops).toBe(2); // retired coops leave the daily checklist
+      const actions = (await prisma.auditLog.findMany({ select: { action: true } })).map((a) => a.action);
+      expect(actions).toEqual(expect.arrayContaining(['coop.created', 'coop.updated']));
+    });
+
+    it('production staff get production figures and nothing financial; sales staff get sales, stock and customer counts and no expenses or cash', async () => {
+      await post('/production', 'prod', { coopId: coop2, shift: 'EVENING', entries: [{ unit: 'CRATE', quantity: 2 }], clientId: uuid() }).expect(201);
+      const prod = (await get('/dashboard', 'prod').expect(200)).body;
+      expect(prod.production).toMatchObject({ yesterdayEggs: expect.any(Number), weekEggs: expect.any(Number), averagePerDay7: expect.any(Number), monthEggs: expect.any(Number), recordsToday: expect.any(Number) });
+      expect(prod.production.todayEggs).toBeGreaterThanOrEqual(60);
+      expect(prod.production.weekEggs).toBeGreaterThanOrEqual(prod.production.todayEggs);
+      for (const k of ['sales', 'expenses', 'cash', 'receivables', 'customers', 'inventory']) expect(prod[k]).toBeUndefined();
+
+      const sales = (await get('/dashboard', 'sales').expect(200)).body;
+      expect(sales.sales).toMatchObject({ weekRevenue: expect.any(String), monthRevenue: expect.any(String), monthCount: expect.any(Number), averageSaleMonth: expect.any(String), unpaidSales: expect.any(Number) });
+      expect(sales.customers).toMatchObject({ total: expect.any(Number), addedThisMonth: expect.any(Number) });
+      expect(sales.inventory).toBeDefined();
+      for (const k of ['production', 'expenses', 'cash', 'receivables']) expect(sales[k]).toBeUndefined(); // sales staff hold no production, expense or payment-read permission
+    });
+  });
 });

@@ -18,11 +18,11 @@ const schema = z
       .default('')
       .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
     APP_LINK_BASE: z.string().default('makarifor://'),
-    EMAIL_HOST: z.string().default(''),
-    EMAIL_PORT: z.coerce.number().int().default(587),
-    EMAIL_USER: z.string().default(''),
-    EMAIL_PASSWORD: z.string().default(''),
+    /** Brevo (https://www.brevo.com) transactional e-mail. Without a key, development/test capture messages in memory instead of sending. */
+    BREVO_API_KEY: z.string().default(''),
+    /** Sender address; it must be a verified sender in Brevo. */
     EMAIL_FROM: z.string().default(''),
+    EMAIL_FROM_NAME: z.string().default('Makarifor Poultry'),
     PUSH_NOTIFICATION_CONFIG: z.string().default(''), // optional Expo access token (needed if Expo "enhanced push security" is on)
     PUSH_PROVIDER: z.enum(['expo', 'none']).optional(), // default: expo in staging/production, none elsewhere (never push from dev/test by accident)
     THROTTLE_OFF: z.enum(['0', '1']).optional(),
@@ -45,8 +45,11 @@ const schema = z
       if (env.THROTTLE_OFF === '1') {
         ctx.addIssue({ code: 'custom', path: ['THROTTLE_OFF'], message: 'rate limiting cannot be disabled in staging/production' });
       }
-      if (!env.EMAIL_HOST) {
-        ctx.addIssue({ code: 'custom', path: ['EMAIL_HOST'], message: 'required (email verification/reset cannot work without it)' });
+      if (!env.BREVO_API_KEY) {
+        ctx.addIssue({ code: 'custom', path: ['BREVO_API_KEY'], message: 'required (invitations, password resets and verification cannot work without it)' });
+      }
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(env.EMAIL_FROM)) {
+        ctx.addIssue({ code: 'custom', path: ['EMAIL_FROM'], message: 'required: a sender e-mail address verified in Brevo' });
       }
       if (env.CORS_ORIGINS.includes('*')) {
         ctx.addIssue({ code: 'custom', path: ['CORS_ORIGINS'], message: 'wildcard origin not allowed' });

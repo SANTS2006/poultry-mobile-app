@@ -65,7 +65,7 @@ Realtime: a `notification.created` event (id + category only) goes to the recipi
 ## Configuration & what you must do
 - `PUSH_PROVIDER` = `expo` (default in staging/production) or `none` (default in development/test, so nothing is ever pushed by accident). `PUSH_NOTIFICATION_CONFIG` = optional Expo access token (needed only if you enable Expo "enhanced push security").
 - For real delivery you need an Expo/EAS project with **FCM (Android) and APNs (iOS) credentials** added through EAS; the mobile app must request permission and register its token (Phase 11).
-- Optional daily-summary e-mail needs SMTP (`EMAIL_*`).
+- Optional daily-summary e-mail needs Brevo (`BREVO_API_KEY`, `EMAIL_FROM`).
 
 ## Not implemented / unverified (honest list)
 - **Real push delivery is unverified**: the Expo client is tested against the documented request/response shapes with a mocked network, and end-to-end with a scripted provider. Nothing has been sent to a real phone or to Expo from this environment.

@@ -107,6 +107,8 @@ model User {
   passwordHash   String?
   status         UserStatus @default(INVITED)
   emailVerified  Boolean    @default(false)
+  mustChangePassword     Boolean   @default(false) // true while the password is a temporary one from an invitation
+  tempPasswordExpiresAt  DateTime? @db.Timestamptz
   pendingEmail   String? // new address awaiting verification; the sign-in address changes only once the link is used
   mfaEnabled     Boolean    @default(false)
   failedAttempts Int        @default(0)
@@ -255,6 +257,8 @@ model Coop {
   id        String    @id @default(uuid()) @db.Uuid
   farmId    String    @db.Uuid
   name      String
+  capacity  Int? // how many birds the house is built for (planning figure only)
+  notes     String?
   active    Boolean   @default(true)
   createdAt DateTime  @default(now()) @db.Timestamptz
   updatedAt DateTime  @updatedAt @db.Timestamptz

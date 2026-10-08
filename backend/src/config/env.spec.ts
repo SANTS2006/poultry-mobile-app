@@ -32,20 +32,20 @@ describe('parseEnv', () => {
 
   it('requires TLS on database URLs in production', () => {
     expect(() => parseEnv({ ...base, APP_ENV: 'production' })).toThrow(/sslmode/);
-    const ok = { ...base, APP_ENV: 'production', EMAIL_HOST: 'smtp.example.com', DATABASE_URL: `${base.DATABASE_URL}?sslmode=require`, DIRECT_DATABASE_URL: `${base.DIRECT_DATABASE_URL}?sslmode=require` };
+    const ok = { ...base, APP_ENV: 'production', BREVO_API_KEY: 'xkeysib-test', EMAIL_FROM: 'no-reply@example.com', DATABASE_URL: `${base.DATABASE_URL}?sslmode=require`, DIRECT_DATABASE_URL: `${base.DIRECT_DATABASE_URL}?sslmode=require` };
     expect(parseEnv(ok).APP_ENV).toBe('production');
   });
 
   it('rejects placeholder secrets and wildcard CORS in production', () => {
-    const prod = { ...base, APP_ENV: 'production', EMAIL_HOST: 'smtp.example.com', DATABASE_URL: `${base.DATABASE_URL}?sslmode=require`, DIRECT_DATABASE_URL: `${base.DIRECT_DATABASE_URL}?sslmode=require` };
+    const prod = { ...base, APP_ENV: 'production', BREVO_API_KEY: 'xkeysib-test', EMAIL_FROM: 'no-reply@example.com', DATABASE_URL: `${base.DATABASE_URL}?sslmode=require`, DIRECT_DATABASE_URL: `${base.DIRECT_DATABASE_URL}?sslmode=require` };
     expect(() => parseEnv({ ...prod, JWT_SECRET: 'CHANGE_ME_'.padEnd(40, 'x') })).toThrow(/placeholder/);
     expect(() => parseEnv({ ...prod, CORS_ORIGINS: '*' })).toThrow(/wildcard/);
   });
 
   it('requires an email host and forbids disabling rate limits in production', () => {
     const prod = { ...base, APP_ENV: 'production', DATABASE_URL: `${base.DATABASE_URL}?sslmode=require`, DIRECT_DATABASE_URL: `${base.DIRECT_DATABASE_URL}?sslmode=require` };
-    expect(() => parseEnv(prod)).toThrow(/EMAIL_HOST/);
-    expect(() => parseEnv({ ...prod, EMAIL_HOST: 'smtp.example.com', THROTTLE_OFF: '1' })).toThrow(/rate limiting/);
+    expect(() => parseEnv(prod)).toThrow(/BREVO_API_KEY/);
+    expect(() => parseEnv({ ...prod, BREVO_API_KEY: 'xkeysib-test', EMAIL_FROM: 'no-reply@example.com', THROTTLE_OFF: '1' })).toThrow(/rate limiting/);
   });
 
   it('never echoes secret values in error messages', () => {

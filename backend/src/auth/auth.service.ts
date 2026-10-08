@@ -4,7 +4,7 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { DomainEvents } from '../domain/events.service';
 import { PasswordService } from '../common/crypto/password.service';
-import { MailService } from '../mail/mail.service';
+import { MailComposer } from '../mail/mail-composer.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthUser, RequestMeta } from './auth.types';
 import { EmailTokenService } from './email-token.service';
@@ -29,7 +29,9 @@ export type UserSummary = { id: string; email: string; fullName: string; avatar:
 export type LoginResult =
   | { status: 'authenticated'; tokens: SessionTokens; user: UserSummary }
   | { status: 'mfa_required'; mfaToken: string }
-  | { status: 'mfa_setup_required'; setupToken: string };
+  | { status: 'mfa_setup_required'; setupToken: string }
+  /** First sign-in with a temporary password: the only thing the token allows is choosing a new password. */
+  | { status: 'password_change_required'; passwordToken: string };
 
 @Injectable()
 export class AuthService {
@@ -41,7 +43,7 @@ export class AuthService {
     private readonly mfa: MfaService,
     private readonly emailTokens: EmailTokenService,
     private readonly audit: AuditService,
-    private readonly mail: MailService,
+    private readonly mail: MailComposer,
     private readonly events: DomainEvents,
   ) {}
 
@@ -68,14 +70,29 @@ export class AuthService {
       await this.audit.record({ action: 'auth.login.disabled_account', userId: user.id, ip: meta.ip, requestId: meta.requestId });
       throw new ForbiddenException('Your account has been disabled. Please contact an administrator.');
     }
-    if (user.status !== 'ACTIVE') throw new ForbiddenException('Your account is not active. Please contact an administrator.');
+    const firstSignIn = user.status === 'INVITED' && user.mustChangePassword;
+    if (user.status !== 'ACTIVE' && !firstSignIn) throw new ForbiddenException('Your account is not active. Please contact an administrator.');
     if (!user.emailVerified) throw new ForbiddenException('Please verify your email address before signing in.');
+    if (user.mustChangePassword && user.tempPasswordExpiresAt && user.tempPasswordExpiresAt.getTime() < Date.now()) {
+      await this.audit.record({ action: 'auth.login.temp_password_expired', userId: user.id, entityType: 'user', entityId: user.id, ip: meta.ip, requestId: meta.requestId });
+      throw new ForbiddenException('Your temporary password has expired. Ask an administrator to send you a new invitation.');
+    }
 
     await this.prisma.user.update({ where: { id: user.id }, data: { failedAttempts: 0, lockedUntil: null } });
     if (this.passwords.needsRehash(user.passwordHash as string)) {
       await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash: await this.passwords.hash(password) } });
     }
 
+    if (user.mustChangePassword) {
+      // No session yet: the caller must first replace the temporary password (then MFA rules apply as usual).
+      await this.audit.record({ action: 'auth.login.password_change_required', userId: user.id, entityType: 'user', entityId: user.id, ip: meta.ip, requestId: meta.requestId });
+      return { status: 'password_change_required', passwordToken: this.tokens.signPurpose('pwd-change', user.id, user.tokenVersion) };
+    }
+    return this.afterPassword(user, meta);
+  }
+
+  /** What happens once the password step is done: second factor, forced MFA enrolment, or a session. */
+  private async afterPassword(user: { id: string; mfaEnabled: boolean; tokenVersion: number }, meta: RequestMeta): Promise<LoginResult> {
     if (user.mfaEnabled) {
       return { status: 'mfa_required', mfaToken: this.tokens.signPurpose('mfa', user.id, user.tokenVersion) };
     }
@@ -189,7 +206,10 @@ export class AuthService {
         throw new BadRequestException('That email address is no longer available. Request the change again with a different one.');
       }
       await this.audit.record({ action: 'auth.email.changed', userId, entityType: 'user', entityId: userId, before: { email: user.email }, after: { email: user.pendingEmail } });
-      await this.mail.send({ to: user.email, subject: 'Your Makarifor email address was changed', text: `The sign-in email for your account is now ${user.pendingEmail}. If this was not you, contact an administrator immediately.` });
+      await this.mail.send(user.email, 'Your email address was changed', {
+        preheader: 'The sign-in email for your account changed.', heading: 'Your email address was changed',
+        paragraphs: [`The sign-in email for your account is now ${user.pendingEmail}.`], note: 'If this was not you, contact an administrator immediately.',
+      });
       return;
     }
     await this.prisma.user.update({ where: { id: userId }, data: { emailVerified: true } });
@@ -204,24 +224,34 @@ export class AuthService {
     await this.emailTokens.sendLink(user.email, 'VERIFY_EMAIL', token);
   }
 
-  /** Invitee sets their password. The invitation link itself proves control of the mailbox, so e-mail becomes verified. */
-  async acceptInvite(token: string, password: string, fullName: string | undefined): Promise<void> {
-    const userId = await this.emailTokens.consume(token, 'INVITE');
-    if (!userId) throw new BadRequestException('This invitation is invalid or has expired.');
-    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, include: { profile: true } });
-    const problems = passwordProblems(password, { email: user.email });
-    if (problems.length) {
-      // Token was consumed by the compare-and-set; re-issue so the invitee can retry with a stronger password.
-      const retry = await this.emailTokens.issue(userId, 'INVITE');
-      await this.emailTokens.sendLink(user.email, 'INVITE', retry);
-      throw new BadRequestException(`${problems.join(' ')} A fresh invitation link has been emailed to you.`);
+  /**
+   * First sign-in: replaces the temporary password from the invitation. Only the short-lived `pwd-change` token (issued after the
+   * temporary password was proven) can do this, and the new password must pass the full password policy. Afterwards sign-in continues
+   * exactly as for any user (second factor / forced authenticator enrolment / session).
+   */
+  async completeFirstPassword(passwordToken: string, newPassword: string, meta: RequestMeta): Promise<LoginResult> {
+    const claims = this.tokens.verify(passwordToken, 'pwd-change');
+    const user = await this.prisma.user.findUnique({ where: { id: claims.sub } });
+    if (!user || user.tokenVersion !== claims.tv || !user.mustChangePassword || user.status === 'DISABLED') {
+      throw new UnauthorizedException('Your session is invalid or has expired. Please sign in again.');
     }
-    const passwordHash = await this.passwords.hash(password);
-    await this.prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id: userId }, data: { passwordHash, status: 'ACTIVE', emailVerified: true } });
-      if (fullName && user.profile) await tx.profile.update({ where: { userId }, data: { fullName } });
-      await this.audit.record({ action: 'auth.invite.accepted', userId, entityType: 'user', entityId: userId }, tx);
+    const problems = passwordProblems(newPassword, { email: user.email });
+    if (problems.length) throw new BadRequestException(problems.join(' '));
+    if (await this.passwords.verify(user.passwordHash, newPassword)) throw new BadRequestException('Choose a password different from the temporary one.');
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const u = await tx.user.update({
+        where: { id: user.id },
+        data: { passwordHash: await this.passwords.hash(newPassword), mustChangePassword: false, tempPasswordExpiresAt: null, status: 'ACTIVE', emailVerified: true, failedAttempts: 0, lockedUntil: null },
+      });
+      await this.audit.record({ action: 'auth.password.first_set', userId: user.id, entityType: 'user', entityId: user.id, ip: meta.ip, requestId: meta.requestId }, tx);
+      return u;
     });
+    await this.mail.send(user.email, 'Your password was set', {
+      preheader: 'Your account is ready to use.', heading: 'Your password was set',
+      paragraphs: ['You replaced your temporary password and your account is now active.'],
+      note: 'If this was not you, contact an administrator immediately.',
+    });
+    return this.afterPassword(updated, meta);
   }
 
   async forgotPassword(emailRaw: string, meta: RequestMeta): Promise<void> {
@@ -252,7 +282,10 @@ export class AuthService {
     });
     await this.sessions.revokeAllForUser(userId, 'password_reset'); // a reset signs out every device
     this.events.emit({ name: 'security.event', entityId: userId, data: { kind: 'password_changed' } });
-    await this.mail.send({ to: user.email, subject: 'Your Makarifor password was changed', text: 'Your password was just reset. If this was not you, contact an administrator immediately.' });
+    await this.mail.send(user.email, 'Your password was changed', {
+      preheader: 'Your password was reset.', heading: 'Your password was reset',
+      paragraphs: ['Your password was just reset and every device was signed out.'], note: 'If this was not you, contact an administrator immediately.',
+    });
   }
 
   async changePassword(user: AuthUser, currentPassword: string, newPassword: string, meta: RequestMeta): Promise<void> {
@@ -270,7 +303,10 @@ export class AuthService {
     });
     await this.sessions.revokeAllForUser(user.id, 'password_changed', user.familyId); // keep only this device signed in
     this.events.emit({ name: 'security.event', entityId: user.id, data: { kind: 'password_changed' } });
-    await this.mail.send({ to: user.email, subject: 'Your Makarifor password was changed', text: 'Your password was just changed. If this was not you, contact an administrator immediately.' });
+    await this.mail.send(user.email, 'Your password was changed', {
+      preheader: 'Your password was changed.', heading: 'Your password was changed',
+      paragraphs: ['Your password was just changed.'], note: 'If this was not you, contact an administrator immediately.',
+    });
   }
 
   /** Own display name and picture. The picture itself is never written to the audit log, only that it changed. */

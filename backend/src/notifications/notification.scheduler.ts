@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import type { Env } from '../config/env';
 import { SettingsService } from '../domain/settings.service';
-import { MailService } from '../mail/mail.service';
+import { MailComposer } from '../mail/mail-composer.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { localParts, shiftLabel } from './format';
 import { NotificationsService } from './notifications.service';
@@ -24,7 +24,7 @@ export class NotificationScheduler implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly settings: SettingsService, private readonly recipients: RecipientsService, private readonly notifications: NotificationsService,
-    private readonly summary: SummaryService, private readonly prisma: PrismaService, private readonly mail: MailService,
+    private readonly summary: SummaryService, private readonly prisma: PrismaService, private readonly mail: MailComposer,
     private readonly logger: PinoLogger, @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
   ) {
     this.logger.setContext(NotificationScheduler.name);
@@ -70,7 +70,7 @@ export class NotificationScheduler implements OnModuleInit, OnModuleDestroy {
       sent++;
       if (emailOn) {
         const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
-        if (u) await this.mail.send({ to: u.email, subject: s.title, text: `${s.body}\n\nSent by Makarifor Agriculture.` });
+        if (u) await this.mail.send(u.email, s.title, { preheader: s.body.slice(0, 90), heading: s.title, paragraphs: s.body.split('\n').filter(Boolean), note: 'You receive this because the daily summary e-mail is on for your account.' });
       }
     }
     return sent;

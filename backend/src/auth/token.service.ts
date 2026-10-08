@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { createHmac } from 'crypto';
 import type { Env } from '../config/env';
 
-export type TokenType = 'access' | 'mfa' | 'mfa-setup';
+export type TokenType = 'access' | 'mfa' | 'mfa-setup' | 'pwd-change';
 
 export interface TokenClaims {
   sub: string;
@@ -15,7 +15,7 @@ export interface TokenClaims {
 }
 
 export const ACCESS_TTL_SECONDS = 15 * 60;
-const PURPOSE_TTL: Record<Exclude<TokenType, 'access'>, number> = { mfa: 5 * 60, 'mfa-setup': 15 * 60 };
+const PURPOSE_TTL: Record<Exclude<TokenType, 'access'>, number> = { mfa: 5 * 60, 'mfa-setup': 15 * 60, 'pwd-change': 15 * 60 };
 const ISSUER = 'makarifor-api';
 const AUDIENCE = 'makarifor-app';
 

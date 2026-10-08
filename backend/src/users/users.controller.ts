@@ -17,9 +17,9 @@ export class UsersController {
   @Post('invite')
   invite(@CurrentUser() actor: AuthUser, @Body() dto: InviteUserDto, @Meta() meta: RequestMeta) { return this.users.invite(actor, dto, meta); }
 
-  @HttpCode(204) @Post(':id/resend-invite')
-  async resend(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Meta() meta: RequestMeta): Promise<void> {
-    await this.users.resendInvite(actor, id, meta);
+  @HttpCode(200) @Post(':id/resend-invite')
+  async resend(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Meta() meta: RequestMeta) {
+    return { emailSent: await this.users.resendInvite(actor, id, meta) };
   }
 
   @Put(':id/roles')

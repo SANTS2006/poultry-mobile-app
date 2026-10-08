@@ -6,7 +6,7 @@ Status of what is verified: the API image steps were simulated (build → prune 
 ## Topology
 ```
 Phone (Expo app) ──HTTPS/WSS──▶ API container (NestJS, single instance) ──TLS──▶ Neon PostgreSQL (pooled URL for the app, direct URL for migrations)
-                                        └──▶ Expo Push service · SMTP provider
+                                        └──▶ Expo Push service · Brevo (e-mail)
 ```
 The phone never connects to the database. Terminate TLS at the host's proxy; the API trusts exactly one proxy hop (`trust proxy 1`, change in `app.setup.ts` if your host differs).
 **Run one API instance**: realtime events are in-process (see `docs/architecture/03-realtime.md`). Scaling out needs the Socket.IO Redis adapter and Redis-published domain events first.
@@ -21,12 +21,12 @@ The phone never connects to the database. Terminate TLS at the host's proxy; the
 ## 2. Environment variables (host secret store; never in git)
 | Variable | Required | Notes |
 |---|---|---|
-| `APP_ENV` | yes | `staging` or `production` (turns on TLS-required DB, mandatory SMTP host, forbids `THROTTLE_OFF`) |
+| `APP_ENV` | yes | `staging` or `production` (turns on TLS-required DB, mandatory Brevo key and sender, forbids `THROTTLE_OFF`) |
 | `PORT` | no | default 3000 |
 | `DATABASE_URL` / `DIRECT_DATABASE_URL` | yes | see above, `sslmode=require` |
 | `JWT_SECRET`, `JWT_REFRESH_SECRET` | yes | ≥32 chars, different from each other and per environment: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
 | `DATA_ENCRYPTION_KEY` | yes | base64 of 32 random bytes (encrypts MFA seeds). **Losing it locks every MFA user out; back it up separately from the database.** Rotation is not implemented |
-| `EMAIL_HOST/PORT/USER/PASSWORD/FROM` | yes in production | invitations, password reset, alerts |
+| `BREVO_API_KEY`, `EMAIL_FROM`, `EMAIL_FROM_NAME` | yes in production | all e-mail goes through Brevo's transactional API: invitations (with the temporary password), password reset, security notices, daily summary. `EMAIL_FROM` must be a verified sender in Brevo |
 | `CORS_ORIGINS` | no | empty is correct for the native app; only list web origins you actually serve |
 | `PUSH_PROVIDER`, `PUSH_NOTIFICATION_CONFIG` | no | `expo` by default in staging/production; token only if Expo enhanced push security is on |
 | `APP_LINK_BASE` | no | deep-link scheme for e-mail links (`makarifor://`) |
@@ -38,7 +38,7 @@ The phone never connects to the database. Terminate TLS at the host's proxy; the
 npx prisma migrate deploy                       # schema + constraints + triggers
 npm run db:seed                                 # roles, permissions, shifts, units, categories (idempotent)
 psql "$DIRECT_DATABASE_URL" -v app_password="'<generated>'" -f prisma/sql/app_role.sql
-npm run bootstrap:admin -- --email owner@… --name "Full Name"   # first Super Admin gets an invitation e-mail; nobody types a password here
+npm run bootstrap:admin -- --email owner@… --name "Full Name"   # first Super Admin gets an invitation e-mail with a temporary password (add --print-password to also print it)
 ```
 Then deploy the `runtime` image (`ghcr.io/<org>/<repo>/api:<tag>`, built by the `release-backend` workflow) with the variables above; health checks: `GET /health/live`, `GET /health/ready`.
 

@@ -14,7 +14,7 @@ Tick every box in **staging** first, then production. Items marked ⚠ have neve
 - [ ] ⚠ Neon staging + production projects, roles, pooled/direct URLs, `app_role.sql` applied
 - [ ] ⚠ Host chosen; image from `release-backend` running; TLS certificate valid; `/health/ready` green
 - [ ] ⚠ Secrets set (unique per environment) and stored in a password manager; `APP_ENV=production` boots (it refuses weak/insecure config)
-- [ ] ⚠ SMTP provider verified (send an invitation to yourself; SPF/DKIM set for the sender domain)
+- [ ] ⚠ Brevo verified (sender verified in Brevo, domain authenticated with SPF/DKIM; send an invitation to yourself and check it arrives, not in spam)
 - [ ] ⚠ Daily `backup.sh` scheduled, copied off-provider, **restore drill passed on a real dump**
 - [ ] ⚠ Uptime monitor + alert rules from `monitoring-and-incident-response.md`
 - [ ] Excel import: dry run reviewed, reconciliation report signed off by the owner, then imported once

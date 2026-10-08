@@ -8,7 +8,7 @@ import { CurrentUser, Meta } from './decorators/current-user.decorator';
 import { AnyAuthenticated } from './decorators/permissions.decorator';
 import { Public } from './decorators/public.decorator';
 import {
-  AcceptInviteDto, ChangeEmailDto, ChangePasswordDto, UpdateProfileDto, EmailOnlyDto, LoginDto, MfaConfirmDto, MfaLoginDto, RefreshDto, ResetPasswordDto, StepUpDto, TokenDto,
+  ChangeEmailDto, FirstPasswordDto, ChangePasswordDto, UpdateProfileDto, EmailOnlyDto, LoginDto, MfaConfirmDto, MfaLoginDto, RefreshDto, ResetPasswordDto, StepUpDto, TokenDto,
 } from './dto/auth.dto';
 import { AuthenticationService, bearerToken } from './guards/jwt-auth.guard';
 import { MfaService } from './mfa.service';
@@ -69,7 +69,7 @@ export class AuthController {
     return this.auth.changeEmail(user, dto.newEmail, dto.currentPassword, meta);
   }
 
-  // ── e-mail verification / invitation / password reset (public, enumeration-safe, single-use tokens) ──
+  // ── e-mail verification / password reset (public, enumeration-safe, single-use tokens) ──
 
   @Public() @Throttle(MODERATE) @HttpCode(204) @Post('verify-email')
   async verifyEmail(@Body() dto: TokenDto): Promise<void> {
@@ -82,9 +82,10 @@ export class AuthController {
     return { message: 'If the account exists and is unverified, an email has been sent.' };
   }
 
-  @Public() @Throttle(MODERATE) @HttpCode(204) @Post('accept-invite')
-  async acceptInvite(@Body() dto: AcceptInviteDto): Promise<void> {
-    await this.auth.acceptInvite(dto.token, dto.password, dto.fullName);
+  /** First sign-in: swaps the temporary password from the invitation e-mail for the user's own, then continues the sign-in. */
+  @Public() @Throttle(STRICT) @HttpCode(200) @Post('first-password')
+  firstPassword(@Body() dto: FirstPasswordDto, @Meta() meta: RequestMeta) {
+    return this.auth.completeFirstPassword(dto.passwordToken, dto.newPassword, meta);
   }
 
   @Public() @Throttle({ default: { limit: 3, ttl: 60_000 } }) @HttpCode(202) @Post('forgot-password')
