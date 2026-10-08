@@ -102,22 +102,22 @@ enum ImportIssueSeverity {
 // ───────────────────── Identity & security ─────────────────────
 
 model User {
-  id             String     @id @default(uuid()) @db.Uuid
-  email          String     @unique // always stored lower-case; lower(email) unique index in constraints migration
-  passwordHash   String?
-  status         UserStatus @default(INVITED)
-  emailVerified  Boolean    @default(false)
-  mustChangePassword     Boolean   @default(false) // true while the password is a temporary one from an invitation
-  tempPasswordExpiresAt  DateTime? @db.Timestamptz
-  pendingEmail   String? // new address awaiting verification; the sign-in address changes only once the link is used
-  mfaEnabled     Boolean    @default(false)
-  failedAttempts Int        @default(0)
-  lockedUntil    DateTime?  @db.Timestamptz
-  tokenVersion   Int        @default(0)
-  lastLoginAt    DateTime?  @db.Timestamptz
-  createdAt      DateTime   @default(now()) @db.Timestamptz
-  updatedAt      DateTime   @updatedAt @db.Timestamptz
-  deletedAt      DateTime?  @db.Timestamptz
+  id                    String     @id @default(uuid()) @db.Uuid
+  email                 String     @unique // always stored lower-case; lower(email) unique index in constraints migration
+  passwordHash          String?
+  status                UserStatus @default(INVITED)
+  emailVerified         Boolean    @default(false)
+  mustChangePassword    Boolean    @default(false) // true while the password is a temporary one from an invitation
+  tempPasswordExpiresAt DateTime?  @db.Timestamptz
+  pendingEmail          String? // new address awaiting verification; the sign-in address changes only once the link is used
+  mfaEnabled            Boolean    @default(false)
+  failedAttempts        Int        @default(0)
+  lockedUntil           DateTime?  @db.Timestamptz
+  tokenVersion          Int        @default(0)
+  lastLoginAt           DateTime?  @db.Timestamptz
+  createdAt             DateTime   @default(now()) @db.Timestamptz
+  updatedAt             DateTime   @updatedAt @db.Timestamptz
+  deletedAt             DateTime?  @db.Timestamptz
 
   profile                 Profile?
   roles                   UserRole[]
@@ -744,4 +744,96 @@ model ImportIssue {
   batch    ImportBatch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
 
   @@index([batchId, severity])
+}
+
+// ── Backup & recovery ────────────────────────────────────────────────────────────────────────────
+enum BackupKind {
+  SCHEDULED
+  MANUAL
+  PRE_RESTORE
+}
+
+enum BackupStatus {
+  PENDING
+  RUNNING
+  SUCCESSFUL
+  FAILED
+}
+
+enum BackupVerification {
+  NOT_VERIFIED
+  VERIFIED
+  FAILED
+}
+
+enum RecoveryStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+/**
+ * One backup attempt. `windowKey` (the local date for scheduled backups) is unique, so however many instances run only one creates the day's job.
+ */
+model BackupJob {
+  id                 String             @id @default(uuid()) @db.Uuid
+  kind               BackupKind
+  status             BackupStatus       @default(PENDING)
+  windowKey          String?            @unique
+  attempt            Int                @default(1)
+  nextAttemptAt      DateTime?
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  sizeBytes          BigInt?
+  sha256             String?
+  format             String?
+  encrypted          Boolean            @default(false)
+  destination        String?
+  storageKey         String?
+  environment        String?
+  dbName             String?
+  serverVersion      String?
+  retentionUntil     DateTime?
+  verification       BackupVerification @default(NOT_VERIFIED)
+  verifiedAt         DateTime?
+  verificationDetail Json?
+  error              String?
+  triggeredById      String?            @db.Uuid
+  deletedAt          DateTime?
+  createdAt          DateTime           @default(now())
+
+  recoveries RecoveryOperation[]
+
+  @@index([status, createdAt])
+  @@index([createdAt])
+}
+
+model RecoveryOperation {
+  id              String         @id @default(uuid()) @db.Uuid
+  backupId        String         @db.Uuid
+  requestedById   String         @db.Uuid
+  requestedByName String
+  status          RecoveryStatus @default(RUNNING)
+  target          String
+  preSnapshotId   String?        @db.Uuid
+  startedAt       DateTime       @default(now())
+  finishedAt      DateTime?
+  report          Json?
+  error           String?
+
+  backup BackupJob @relation(fields: [backupId], references: [id], onDelete: Restrict)
+
+  @@index([startedAt])
+}
+
+/**
+ * Single row (id = 1).
+ */
+model BackupSetting {
+  id            Int      @id @default(1)
+  enabled       Boolean  @default(true)
+  scheduleTime  String   @default("02:00") // business time zone
+  retentionDays Int      @default(14)
+  keepMonthly   Int      @default(6)
+  updatedAt     DateTime @updatedAt
 }

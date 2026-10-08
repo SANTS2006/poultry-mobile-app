@@ -48,6 +48,9 @@ export default function AppLayout() {
       <Stack.Screen name="admin/users" options={{ title: 'Users' }} />
       <Stack.Screen name="admin/user/[id]" options={{ ...modal, title: 'User' }} />
       <Stack.Screen name="admin/invite" options={sheet} />
+      <Stack.Screen name="admin/backups" options={{ title: 'Backups' }} />
+      <Stack.Screen name="admin/backup/[id]" options={sheet} />
+      <Stack.Screen name="admin/recover" options={{ ...modal, title: 'Restore a backup' }} />
       <Stack.Screen name="admin/audit" options={{ title: 'Audit log' }} />
       <Stack.Screen name="admin/coops" options={{ title: 'Coops' }} />
       <Stack.Screen name="admin/coop" options={sheet} />

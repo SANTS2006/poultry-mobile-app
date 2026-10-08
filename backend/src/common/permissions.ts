@@ -17,6 +17,7 @@ export const PERMISSIONS = [
   'settings.manage', 'security.manage',
   'audit.read',
   'notifications.manage',
+  'backups.manage',
 ] as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[number];
@@ -38,7 +39,7 @@ export const ROLES: readonly RoleDefinition[] = [
   },
   {
     code: 'OWNER', name: 'Owner / Admin', description: 'Business owner: operations, finance, staff, settings', mfaRequired: true,
-    permissions: all.filter((p) => !['roles.manage', 'permissions.manage', 'security.manage'].includes(p)),
+    permissions: all.filter((p) => !['roles.manage', 'permissions.manage', 'security.manage', 'backups.manage'].includes(p)),
   },
   {
     code: 'FARM_MANAGER', name: 'Farm Manager', description: 'Runs daily operations', mfaRequired: false,

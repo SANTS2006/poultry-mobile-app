@@ -1,7 +1,7 @@
 import type { ApiClient } from '../services/api-client';
 import type { UserSummary } from '../services/session-manager';
 import type {
-  AdminUser, AppNotification, AuditEntry, Coop, Customer, Dashboard, Expense, InventorySnapshot, InventoryTx, InventoryTxDetail, NotificationPage, NotificationPreference, Page,
+  AdminUser, AppNotification, AuditEntry, BackupJob, BackupStatus, RecoveryOp, Coop, Customer, Dashboard, Expense, InventorySnapshot, InventoryTx, InventoryTxDetail, NotificationPage, NotificationPreference, Page,
   PayMethod, PriceRow, ProductionRecord, ReportResult, Role, Sale, SessionInfo, Supplier, Unit, UnitInfo,
 } from './types';
 
@@ -115,6 +115,17 @@ export function createEndpoints(api: ApiClient) {
       resetMfa: (id: string, reason: string) => post(`/users/${id}/reset-mfa`, { reason }),
       roles: () => get<Role[]>('/roles'),
       audit: (p: Params) => get<Page<AuditEntry>>('/audit', p),
+      backups: {
+        status: () => get<BackupStatus>('/backups/status'),
+        list: (p: Params) => get<Page<BackupJob>>('/backups', p),
+        get: (id: string) => get<BackupJob>(`/backups/${id}`),
+        runNow: () => post<BackupJob>('/backups'),
+        verify: (id: string, deep: boolean) => post<{ ok: boolean; level: string; message?: string }>(`/backups/${id}/verify`, { deep }),
+        settings: (body: { enabled?: boolean; scheduleTime?: string; retentionDays?: number; keepMonthly?: number }) => patch<BackupStatus>('/backups/settings', body),
+        recoveries: () => get<RecoveryOp[]>('/recoveries'),
+        recovery: (id: string) => get<RecoveryOp>(`/recoveries/${id}`),
+        recover: (body: { backupId: string; password: string; code: string; confirm: string }) => post<RecoveryOp>('/recoveries', body),
+      },
       verifyAudit: () => get<{ intact: boolean; firstInconsistentId: string | null; checked: number; total: number }>('/audit/verify'),
     },
   };

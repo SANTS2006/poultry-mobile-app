@@ -28,6 +28,25 @@ const schema = z
     THROTTLE_OFF: z.enum(['0', '1']).optional(),
     /** Seconds between keep-alive queries that stop a serverless database (Neon) from going to sleep. 0 = off. Default: 240 in staging/production, off elsewhere. */
     DB_KEEPALIVE_SECONDS: z.coerce.number().int().min(0).max(3600).optional(),
+    /**
+     * Backups. BACKUP_ENCRYPTION_KEY (32 bytes, base64) must be a different key from DATA_ENCRYPTION_KEY and be stored somewhere other than
+     * the backups. BACKUP_STORAGE=s3 sends the encrypted dumps to any S3-compatible bucket (AWS S3, Cloudflare R2, Backblaze B2, Wasabi…).
+     * RECOVERY_ADMIN_DATABASE_URL is a server where scratch/recovery databases may be created (never the production database itself).
+     */
+    BACKUP_ENABLED: z.enum(['0', '1']).optional(),
+    BACKUP_ENCRYPTION_KEY: z.string().default(''),
+    BACKUP_STORAGE: z.enum(['local', 's3']).default('local'),
+    BACKUP_LOCAL_DIR: z.string().default('./backups'),
+    BACKUP_S3_BUCKET: z.string().default(''),
+    BACKUP_S3_REGION: z.string().default('auto'),
+    BACKUP_S3_ENDPOINT: z.string().default(''),
+    BACKUP_S3_ACCESS_KEY_ID: z.string().default(''),
+    BACKUP_S3_SECRET_ACCESS_KEY: z.string().default(''),
+    BACKUP_S3_PREFIX: z.string().default('makarifor/'),
+    BACKUP_PG_BIN_DIR: z.string().default(''),
+    BACKUP_ALERT_EMAILS: z.string().default('').transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
+    BACKUP_STALE_HOURS: z.coerce.number().int().min(2).max(240).default(26),
+    RECOVERY_ADMIN_DATABASE_URL: z.string().default(''),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   })
   .superRefine((env, ctx) => {
@@ -42,6 +61,15 @@ const schema = z
       for (const k of ['DATABASE_URL', 'DIRECT_DATABASE_URL'] as const) {
         if (!/sslmode=(require|verify-full|verify-ca)/.test(env[k])) {
           ctx.addIssue({ code: 'custom', path: [k], message: 'must include sslmode=require (TLS is mandatory)' });
+        }
+      }
+      // A missing key does not stop the API from starting (that would turn a deploy into an outage); backups simply stay off and the
+      // Backups screen shows a warning. A key that IS set must be valid and separate from the data key.
+      if (env.BACKUP_ENABLED !== '0') {
+        if (env.BACKUP_ENCRYPTION_KEY && Buffer.from(env.BACKUP_ENCRYPTION_KEY, 'base64').length !== 32) ctx.addIssue({ code: 'custom', path: ['BACKUP_ENCRYPTION_KEY'], message: 'must be 32 bytes, base64-encoded' });
+        else if (env.BACKUP_ENCRYPTION_KEY && env.BACKUP_ENCRYPTION_KEY === env.DATA_ENCRYPTION_KEY) ctx.addIssue({ code: 'custom', path: ['BACKUP_ENCRYPTION_KEY'], message: 'must differ from DATA_ENCRYPTION_KEY' });
+        if (env.BACKUP_STORAGE === 's3' && !(env.BACKUP_S3_BUCKET && env.BACKUP_S3_ACCESS_KEY_ID && env.BACKUP_S3_SECRET_ACCESS_KEY)) {
+          ctx.addIssue({ code: 'custom', path: ['BACKUP_S3_BUCKET'], message: 'BACKUP_S3_BUCKET, BACKUP_S3_ACCESS_KEY_ID and BACKUP_S3_SECRET_ACCESS_KEY are required for BACKUP_STORAGE=s3' });
         }
       }
       if (env.THROTTLE_OFF === '1') {

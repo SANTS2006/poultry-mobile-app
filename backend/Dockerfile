@@ -1,7 +1,13 @@
 # syntax=docker/dockerfile:1
 # Three targets:  runtime (default, what production runs)  ·  tools (migrations, seed, bootstrap-admin, Excel import)  ·  build (intermediate)
 FROM node:22-bookworm-slim AS base
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+# postgresql-client-17 (from the official PGDG repository; Debian 12 only ships 15) provides pg_dump/pg_restore for the in-app backups. A pg_dump must be
+# at least as new as the server, and it can dump older servers too. Not built or run in the authoring environment: check `docker build` in CI.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates curl gnupg \
+    && install -d /usr/share/keyrings && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update && apt-get install -y --no-install-recommends postgresql-client-17 \
+    && apt-get purge -y curl gnupg && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 FROM base AS build

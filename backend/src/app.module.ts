@@ -29,6 +29,7 @@ import { ReportsModule } from './reports/reports.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
+import { BackupModule } from './backup/backup.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { HealthModule } from './health/health.module';
     ReportsModule,
     RealtimeModule,
     HealthModule,
+    BackupModule,
   ],
   providers: [
     // Order matters: rate-limit → authenticate → authorize. Authorization is deny-by-default (see PermissionsGuard).

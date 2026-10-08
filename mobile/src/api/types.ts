@@ -83,3 +83,22 @@ export interface Coop { id: string; name: string; active?: boolean; capacity?: n
 export interface UnitInfo { code: Unit; name?: string; eggsPerUnit: number }
 export interface Supplier { id: string; name: string; phone: string | null; notes: string | null; active: boolean }
 export interface PriceRow { id: string; unit: Unit; amount: string; effectiveFrom: string; effectiveTo: string | null; reason: string | null }
+
+export type BackupState = 'PENDING' | 'RUNNING' | 'SUCCESSFUL' | 'FAILED';
+export interface BackupCheck { name: string; ok: boolean }
+export interface BackupJob {
+  id: string; kind: 'SCHEDULED' | 'MANUAL' | 'PRE_RESTORE'; status: BackupState; attempt: number; createdAt: string; startedAt: string | null; finishedAt: string | null;
+  sizeBytes: number | null; sha256: string | null; format: string | null; encrypted: boolean; destination: string | null; retentionUntil: string | null;
+  verification: 'NOT_VERIFIED' | 'VERIFIED' | 'FAILED'; verifiedAt: string | null;
+  verificationDetail: { ok: boolean; level: 'archive' | 'restore'; checks: BackupCheck[]; message?: string; at: string } | null;
+  error: string | null; nextAttemptAt: string | null; environment: string | null; dbName: string | null; serverVersion: string | null; deleted: boolean;
+}
+export interface BackupStatus {
+  health: 'ok' | 'stale' | 'failing' | 'never' | 'disabled'; enabled: boolean; environment: string; timezone: string; scheduleTime: string; retentionDays: number; keepMonthly: number;
+  destination: string; offsite: boolean; storageOk: boolean; recoveryConfigured: boolean; database: string;
+  latestSuccess: BackupJob | null; latestFailure: BackupJob | null; running: BackupJob | null; backupAgeHours: number | null; staleAfterHours: number; warnings: string[];
+}
+export interface RecoveryOp {
+  id: string; backupId: string; requestedBy: string; status: 'RUNNING' | 'SUCCEEDED' | 'FAILED'; target: string; preSnapshotId: string | null; startedAt: string; finishedAt: string | null; error: string | null;
+  report: { steps?: { step: string; ok: boolean; detail?: string }[]; checks?: BackupCheck[]; database?: string; next?: string } | null;
+}

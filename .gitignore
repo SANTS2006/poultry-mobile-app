@@ -5,3 +5,8 @@ dist
 !.env.example
 coverage
 .DS_Store
+
+# local encrypted backups (never commit)
+backups/
+*.dump
+*.dump.enc
