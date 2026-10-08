@@ -41,7 +41,7 @@ export default function NewPayment() {
       <Segmented label="Paid by" value={method} onChange={setMethod} options={METHODS.map((m) => ({ value: m.value, label: m.label }))} />
       <Field label="Reference (optional)" {...form.field('reference')} maxLength={100} hint="Mobile-money or bank reference" />
       <ProblemList problems={rec.problems} error={rec.error} />
-      <Button title="Record payment" onPress={() => void save()} busy={rec.busy} />
+      <Button title={rec.error ? 'Try again' : 'Record payment'} icon={rec.error ? 'refresh' : undefined} onPress={() => void save()} busy={rec.busy} />
     </SheetScreen>
   );
 }

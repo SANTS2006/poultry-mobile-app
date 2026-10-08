@@ -86,7 +86,7 @@ export default function NewExpense() {
       </Row>
       <Field label="Notes (optional)" {...form.field('notes')} multiline maxLength={500} />
       <ProblemList problems={rec.problems} error={rec.error} />
-      <Button title="Save expense" onPress={() => void save()} busy={rec.busy} />
+      <Button title={rec.error ? 'Try again' : 'Save expense'} icon={rec.error ? 'refresh' : undefined} onPress={() => void save()} busy={rec.busy} />
     </Screen>
   );
 }

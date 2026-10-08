@@ -93,6 +93,17 @@ describe('StatusBanners', () => {
     withSync({ pending: 3 });
     expect(texts(render(<StatusBanners />))).toContain('Sending 3 saved records');
   });
+  it('offers a Retry button for unsent records that runs the app’s retry', () => {
+    const retry = jest.fn();
+    act(() => { useAppStore.getState().setRetryHandler(retry); });
+    withSync({ pending: 2 });
+    const r = render(<StatusBanners />);
+    act(() => { r.root.findAll((n) => n.props.accessibilityLabel === 'Retry' && typeof n.props.onPress === 'function')[0].props.onPress(); });
+    expect(retry).toHaveBeenCalledTimes(1);
+    withSync({ conflict: 1 });
+    expect(r.root.findAll((n) => n.props.accessibilityLabel === 'Retry').length).toBeGreaterThan(0); // also on the "needs attention" banner
+    act(() => { useAppStore.getState().setRetryHandler(null); });
+  });
 });
 
 describe('ReasonModal', () => {

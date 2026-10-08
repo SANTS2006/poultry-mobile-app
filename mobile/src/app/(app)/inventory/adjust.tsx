@@ -57,7 +57,7 @@ export default function AdjustStock() {
       <Stepper label="How many" value={qty} onChange={setQty} />
       <Field label="Reason" icon="chatbox-ellipses-outline" {...form.field('reason')} maxLength={300} />
       {error ? <InlineError message={error} /> : null}
-      <Button title="Save adjustment" onPress={() => void save()} busy={busy} />
+      <Button title={error ? 'Try again' : 'Save adjustment'} icon={error ? 'refresh' : undefined} onPress={() => void save()} busy={busy} />
     </SheetScreen>
   );
 }

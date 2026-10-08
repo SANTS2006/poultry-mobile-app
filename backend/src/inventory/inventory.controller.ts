@@ -110,11 +110,10 @@ export class InventoryController {
         return { id: prior.id, type: prior.type, quantityEggs: prior.quantityEggs, duplicate: true };
       }
     }
+    const unit = (await this.pricing.unitsFor()).get(dto.unit)!; // from memory: not worth a round trip inside the transaction
+    const eggs = dto.quantity * unit.eggsPerUnit;
+    const signed = dto.type === 'ADJUSTMENT' && dto.direction === 'INCREASE' ? eggs : -eggs;
     const result = await this.prisma.$transaction(async (tx) => {
-      const units = await this.pricing.unitsFor(tx);
-      const unit = units.get(dto.unit)!;
-      const eggs = dto.quantity * unit.eggsPerUnit;
-      const signed = dto.type === 'ADJUSTMENT' && dto.direction === 'INCREASE' ? eggs : -eggs;
       const r = await this.inventory.post(tx, {
         farmId, productId: unit.productId, type: dto.type, quantityEggs: signed, occurredAt: new Date(), sourceType: 'adjustment',
         reason: dto.reason, createdById: user.id, clientId: dto.clientId,

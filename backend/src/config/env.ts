@@ -26,6 +26,8 @@ const schema = z
     PUSH_NOTIFICATION_CONFIG: z.string().default(''), // optional Expo access token (needed if Expo "enhanced push security" is on)
     PUSH_PROVIDER: z.enum(['expo', 'none']).optional(), // default: expo in staging/production, none elsewhere (never push from dev/test by accident)
     THROTTLE_OFF: z.enum(['0', '1']).optional(),
+    /** Seconds between keep-alive queries that stop a serverless database (Neon) from going to sleep. 0 = off. Default: 240 in staging/production, off elsewhere. */
+    DB_KEEPALIVE_SECONDS: z.coerce.number().int().min(0).max(3600).optional(),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   })
   .superRefine((env, ctx) => {
@@ -63,7 +65,7 @@ export type Env = z.infer<typeof schema>;
 export function parseEnv(raw: Record<string, unknown>): Env {
   // A blank line in .env ("PUSH_PROVIDER=") means "not set", not an invalid empty value.
   const cleaned = { ...raw };
-  for (const k of ['PUSH_PROVIDER', 'THROTTLE_OFF']) if (cleaned[k] === '') delete cleaned[k];
+  for (const k of ['PUSH_PROVIDER', 'THROTTLE_OFF', 'DB_KEEPALIVE_SECONDS']) if (cleaned[k] === '') delete cleaned[k];
   const result = schema.safeParse(cleaned);
   if (!result.success) {
     const lines = result.error.issues.map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`);

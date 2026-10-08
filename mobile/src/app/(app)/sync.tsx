@@ -3,6 +3,7 @@ import { describeError } from '../../lib/errors';
 import { formatDateTime, timeAgo } from '../../lib/format';
 import { useApp } from '../../state/app';
 import { useDialog } from '../../ui/dialog';
+import { useToast } from '../../ui/toast';
 import { useAppStore } from '../../state/store';
 import type { OutboxItem } from '../../sync';
 import { Badge, Button, Card, InlineError, Row, Screen, SectionTitle, Text } from '../../ui/components';
@@ -35,6 +36,7 @@ const STATUS: Record<string, { label: string; tone: 'info' | 'warn' | 'danger' |
 export default function SyncScreen() {
   const { services } = useApp();
   const dialog = useDialog();
+  const toast = useToast();
   const sync = useAppStore((s) => s.sync);
   const [items, setItems] = useState<OutboxItem[]>([]);
   const [busy, setBusy] = useState(false);
@@ -45,6 +47,20 @@ export default function SyncScreen() {
   const attention = items.filter((i) => ['conflict', 'rejected', 'blocked'].includes(i.status));
   const waiting = items.filter((i) => ['pending', 'syncing'].includes(i.status));
   const done = items.filter((i) => i.status === 'synced');
+
+  /** The Retry buttons: skip the wait between automatic attempts, then say plainly what happened. */
+  async function retry(clientId?: string) {
+    setBusy(true);
+    try {
+      const r = await services.engine.retry(clientId);
+      load();
+      const left = (await services.engine.list({ statuses: ['pending', 'syncing', 'conflict', 'rejected', 'blocked'] })).filter((i) => !clientId || i.clientId === clientId);
+      if (r.skipped === 'offline') void dialog.notify({ title: 'You are offline', message: 'The records stay safe on this phone and will be sent when you are back online.', tone: 'warn' });
+      else if (r.skipped === 'auth_required') void dialog.notify({ title: 'Sign in again', message: 'Your session ended. Sign in, and the records will be sent.', tone: 'warn' });
+      else if (left.length === 0) toast.show(r.synced === 1 ? 'Sent' : `${r.synced} records sent`, 'success');
+      else void dialog.notify({ title: r.synced ? `${r.synced} sent, ${left.length} still waiting` : 'Still could not send', message: left[0]?.lastError?.message ?? 'The server did not answer in time. You can retry again in a moment.', tone: 'warn', okLabel: 'OK' });
+    } catch (e) { void dialog.notify({ title: 'Could not retry', message: describeError(e), tone: 'danger' }); } finally { setBusy(false); load(); }
+  }
 
   async function syncNow() {
     setBusy(true);
@@ -57,9 +73,12 @@ export default function SyncScreen() {
       <Text muted>{summarize(i)}</Text>
       <Text size="small" muted>Saved {formatDateTime(i.createdAt)}{i.attempts ? ` · ${i.attempts} attempt${i.attempts === 1 ? '' : 's'}` : ''}</Text>
       {i.lastError?.message ? <InlineError message={i.lastError.message} /> : null}
+      {['pending', 'syncing'].includes(i.status) ? (
+        <Row style={{ flexWrap: 'wrap' }}><Button title="Retry now" icon="refresh" variant="secondary" small onPress={() => void retry(i.clientId)} busy={busy} /></Row>
+      ) : null}
       {['conflict', 'rejected', 'blocked'].includes(i.status) ? (
         <Row style={{ flexWrap: 'wrap' }}>
-          <Button title="Try again" variant="secondary" small onPress={() => void services.engine.resolve(i.clientId, 'retry').then(load).catch((e) => dialog.notify({ title: 'Could not retry', message: describeError(e), tone: 'danger' }))} />
+          <Button title="Retry" icon="refresh" variant="secondary" small onPress={() => void retry(i.clientId)} busy={busy} />
           <Button title="Discard" variant="danger" small onPress={() => { void dialog.confirm({ title: 'Discard this record?', message: 'It will be removed from this phone and never sent. This cannot be undone.', confirmLabel: 'Discard', cancelLabel: 'Keep it', destructive: true }).then((ok) => { if (ok) void services.engine.resolve(i.clientId, 'discard').then(load).catch((e) => dialog.notify({ title: 'Could not discard', message: describeError(e), tone: 'danger' })); }); }} />
         </Row>
       ) : null}
@@ -72,7 +91,8 @@ export default function SyncScreen() {
         <Text bold>{sync?.online === false ? 'Offline' : 'Online'}</Text>
         <Text muted>Last successful sync: {sync?.lastSyncedAt ? `${timeAgo(sync.lastSyncedAt)} (${formatDateTime(sync.lastSyncedAt)})` : 'never'}</Text>
         <Text muted>{sync ? `${sync.pending + sync.syncing} waiting · ${sync.conflict + sync.rejected + sync.blocked} need attention` : ''}</Text>
-        <Button title="Sync now" onPress={() => void syncNow()} busy={busy || !!sync?.syncing_now} />
+        <Button title="Sync now" icon="sync" onPress={() => void syncNow()} busy={busy || !!sync?.syncing_now} />
+        {attention.length + waiting.length > 0 ? <Button title={`Retry all (${attention.length + waiting.length})`} icon="refresh" variant="secondary" onPress={() => void retry()} busy={busy} /> : null}
       </Card>
       {attention.length ? <SectionTitle>Needs your attention</SectionTitle> : null}
       {attention.map((i) => <Item key={i.clientId} i={i} />)}

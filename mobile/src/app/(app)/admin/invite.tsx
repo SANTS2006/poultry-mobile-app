@@ -46,7 +46,7 @@ export default function Invite() {
       {roles.isLoading ? <Loading /> : <Segmented label="Role" error={roleError} value={role} onChange={(v) => { setRole(v); setRoleError(null); }} options={(roles.data ?? []).map((r) => ({ value: r.code, label: r.name }))} />}
       <Card tone="info"><Text size="small">We email them a temporary password (valid 72 hours) with their role and how to sign in. They choose their own password the first time they sign in. Give people only the role they need: production staff cannot see money; sales staff cannot see expenses. Owners and administrators must use two-step sign-in.</Text></Card>
       <InlineError message={error} />
-      <Button title="Send invitation" icon="paper-plane-outline" onPress={() => void send()} busy={busy} />
+      <Button title={error ? 'Try again' : 'Send invitation'} icon={error ? 'refresh' : 'paper-plane-outline'} onPress={() => void send()} busy={busy} />
     </SheetScreen>
   );
 }

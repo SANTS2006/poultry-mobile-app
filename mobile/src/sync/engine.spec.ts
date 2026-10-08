@@ -374,3 +374,57 @@ describe('local stock estimate', () => {
     expect(estimateStockEggs(1000, units, out as never)).toBe(1000 + 570 - 360);
   });
 });
+
+describe('SyncEngine: the Retry button', () => {
+  const failOnce = (transport: FakeTransport) => transport.script.push((req, apply) => {
+    const ok = apply();
+    return { ...ok, results: ok.results.map((r) => ({ clientId: r.clientId, entityType: 'x', status: 'error', code: 'SERVER_ERROR', message: 'The server could not process this yet.', retryable: true })) };
+  });
+
+  it('sends a waiting record immediately instead of waiting out the automatic delay, and starts the attempt count over', async () => {
+    const { engine, transport, storage } = make();
+    failOnce(transport);
+    const item = await engine.enqueue('production.create', production());
+    await engine.sync();
+    const waiting = await storage.get(item.clientId);
+    expect(waiting).toMatchObject({ status: 'pending', attempts: 1 });
+    expect(waiting!.nextAttemptAt).not.toBeNull();
+
+    const callsBefore = transport.calls.length;
+    await engine.sync(); // the normal schedule respects the delay…
+    expect(transport.calls.length).toBe(callsBefore);
+
+    const report = await engine.retry(); // …the button does not
+    expect(report.synced).toBe(1);
+    expect(await storage.get(item.clientId)).toMatchObject({ status: 'synced', attempts: 0, nextAttemptAt: null });
+  });
+
+  it('retries one record only when given its id, and also retries records the server refused', async () => {
+    const { engine, transport, storage } = make();
+    const a = await engine.enqueue('production.create', production());
+    const b = await engine.enqueue('production.create', production({ shift: 'EVENING' }));
+    transport.outcomes.set(a.clientId, { status: 'rejected', code: 'BUSINESS_RULE', message: 'No.' });
+    transport.outcomes.set(b.clientId, { status: 'rejected', code: 'BUSINESS_RULE', message: 'No.' });
+    await engine.sync();
+    expect((await storage.get(a.clientId))!.status).toBe('rejected');
+
+    transport.outcomes.delete(a.clientId); // the problem was fixed (e.g. permission granted)
+    const report = await engine.retry(a.clientId);
+    expect(report.synced).toBe(1);
+    expect((await storage.get(a.clientId))!.status).toBe('synced');
+    expect((await storage.get(b.clientId))!.status).toBe('rejected'); // untouched
+
+    transport.outcomes.delete(b.clientId);
+    expect((await engine.retry()).synced).toBe(1);
+    expect((await storage.get(b.clientId))!.status).toBe('synced');
+  });
+
+  it('says why nothing happened when offline or signed out, and keeps every record', async () => {
+    const { engine, network, storage } = make({ network: new FakeNetwork(false) });
+    const item = await engine.enqueue('production.create', production());
+    expect((await engine.retry()).skipped).toBe('offline');
+    expect((await storage.get(item.clientId))!.status).toBe('pending');
+    network.set(true);
+    expect((await engine.retry()).synced).toBe(1);
+  });
+});

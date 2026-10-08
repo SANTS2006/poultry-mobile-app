@@ -30,6 +30,10 @@ const ENTITY: Record<OfflineOperation, string> = {
 
 const DTO = { 'production.create': CreateProductionDto, 'sale.create': CreateSaleDto, 'expense.create': CreateExpenseDto, 'customer.create': CreateCustomerDto, 'payment.create': CreatePaymentDto } as const;
 
+/** Kinds of record that can be applied side by side, and how many at once. */
+const PARALLEL_SAFE = new Set<string>(['production.create', 'expense.create', 'customer.create']);
+const CONCURRENCY = 4;
+
 const STATUS_TO_DB: Record<OperationResult['status'], SyncStatus | null> = {
   accepted: 'ACCEPTED', duplicate: 'DUPLICATE', rejected: 'REJECTED', conflict: 'CONFLICT', error: null, // transient errors are never recorded as an outcome
 };
@@ -51,7 +55,15 @@ export class SyncService {
 
   async push(user: AuthUser, deviceId: string | undefined, ops: SyncOperationDto[], meta: RequestMeta): Promise<OperationResult[]> {
     const results: OperationResult[] = [];
-    for (const op of ops) results.push(await this.applyOne(user, deviceId, op, meta));
+    // Consecutive records of the same independent kind (production, expense, customer) are applied a few at a time: they cannot affect each
+    // other except through stock (which is locked per row) and the audit chain (serialised), so the batch takes a fraction of the time on a slow
+    // link. Sales and payments depend on earlier records (stock, customers, sales), so they always run one at a time, in the order sent.
+    for (let i = 0; i < ops.length;) {
+      const group = [ops[i]!];
+      if (PARALLEL_SAFE.has(ops[i]!.type)) while (i + group.length < ops.length && group.length < CONCURRENCY && ops[i + group.length]!.type === ops[i]!.type) group.push(ops[i + group.length]!);
+      results.push(...(await Promise.all(group.map((op) => this.applyOne(user, deviceId, op, meta)))));
+      i += group.length;
+    }
     const count = (s: string) => results.filter((r) => r.status === s).length;
     await this.audit.record({
       action: 'sync.push', userId: user.id, userName: user.fullName, entityType: 'device', entityId: deviceId,

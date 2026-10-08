@@ -80,7 +80,7 @@ function Form({ coop }: { coop?: Coop }) {
         <Field label="Bird capacity (optional)" icon="egg-outline" {...form.field('capacity')} keyboardType="number-pad" maxLength={7} hint="How many birds the house is built for. Used for planning only." />
         <Field label="Notes (optional)" {...form.field('notes')} multiline maxLength={300} />
         <InlineError message={error} />
-        <Button title={coop ? 'Save changes' : 'Add coop'} icon="checkmark" onPress={() => void save()} busy={busy} />
+        <Button title={error ? 'Try again' : coop ? 'Save changes' : 'Add coop'} icon={error ? 'refresh' : 'checkmark'} onPress={() => void save()} busy={busy} />
         {coop ? (
           <>
             <Button title={coop.active === false ? 'Reactivate this coop' : 'Retire this coop'} variant={coop.active === false ? 'secondary' : 'danger'} onPress={() => void toggleActive()} disabled={busy} />

@@ -73,30 +73,31 @@ export class SalesService {
     }
 
     let sale: Row;
-    let eggs = 0;
     const saleId = randomUUID(); // known up-front so the ledger row can reference the sale it belongs to
+
+    // Everything that only READS (units, customer, prices) and the arithmetic happen BEFORE the transaction, with the lookups side by side:
+    // each statement inside a transaction is a database round trip made while holding locks, so the transaction keeps only what must be atomic.
+    const unitMap = await this.pricing.unitsFor();
+    const at = date === today ? new Date() : new Date(`${date}T23:59:59.999Z`); // price in force on the sale date
+    for (const item of dto.items) if (!unitMap.get(item.unit)) throw new BadRequestException(`Unit ${item.unit} is not configured.`);
+    const [customer, prices] = await Promise.all([
+      dto.customerId ? this.prisma.customer.findFirst({ where: { id: dto.customerId, deletedAt: null } }) : Promise.resolve(null), // null = walk-in
+      Promise.all(dto.items.map((item) => this.pricing.priceAt(this.prisma, unitMap.get(item.unit)!, at))),
+    ]);
+    if (dto.customerId && !customer) throw new BadRequestException('Unknown customer.');
+    // authoritative prices + server-side arithmetic (exact decimals, never floats)
+    const lines = dto.items.map((item, i) => {
+      const unit = unitMap.get(item.unit)!;
+      return { unit, quantity: item.quantity, baseEggs: item.quantity * unit.eggsPerUnit, unitPrice: prices[i]!, lineTotal: prices[i]!.times(item.quantity) };
+    });
+    const eggs = lines.reduce((a, l) => a + l.baseEggs, 0);
+    const subtotal = lines.reduce((a, l) => a.plus(l.lineTotal), new Prisma.Decimal(0));
+    if (discountIn.gt(subtotal)) throw new BadRequestException('The discount cannot exceed the subtotal.');
+    const total = subtotal.minus(discountIn);
+    if (total.lte(0)) throw new BadRequestException('The sale total must be greater than zero.');
+
     try {
       sale = await this.prisma.$transaction(async (tx) => {
-        const unitMap = await this.pricing.unitsFor(tx);
-        const at = date === today ? new Date() : new Date(`${date}T23:59:59.999Z`); // price in force on the sale date
-
-        // customer (null = walk-in)
-        const customer = dto.customerId ? await tx.customer.findFirst({ where: { id: dto.customerId, deletedAt: null } }) : null;
-        if (dto.customerId && !customer) throw new BadRequestException('Unknown customer.');
-
-        // authoritative prices + server-side arithmetic (exact decimals, never floats)
-        const lines = [];
-        for (const item of dto.items) {
-          const unit = unitMap.get(item.unit);
-          if (!unit) throw new BadRequestException(`Unit ${item.unit} is not configured.`);
-          const price = await this.pricing.priceAt(tx, unit, at);
-          lines.push({ unit, quantity: item.quantity, baseEggs: item.quantity * unit.eggsPerUnit, unitPrice: price, lineTotal: price.times(item.quantity) });
-        }
-        eggs = lines.reduce((a, l) => a + l.baseEggs, 0);
-        const subtotal = lines.reduce((a, l) => a.plus(l.lineTotal), new Prisma.Decimal(0));
-        if (discountIn.gt(subtotal)) throw new BadRequestException('The discount cannot exceed the subtotal.');
-        const total = subtotal.minus(discountIn);
-        if (total.lte(0)) throw new BadRequestException('The sale total must be greater than zero.');
 
         // payment / credit rules
         const paid = dto.amountPaid === undefined ? total : new Prisma.Decimal(dto.amountPaid);

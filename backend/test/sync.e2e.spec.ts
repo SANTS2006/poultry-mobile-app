@@ -85,6 +85,34 @@ describe('Offline sync (e2e): push semantics, idempotency, conflicts and the rea
       expect((await prisma.syncOperation.findMany({ where: { clientId: { in: [c1, p1, s1, e1] } } })).every((r) => r.status === 'ACCEPTED' && r.userId === users.manager.id && r.deviceId === 'dev-manager')).toBe(true);
     });
 
+    it('applies runs of independent records side by side but keeps results in the order sent, and keeps sales in order after the stock they need', async () => {
+      const before = await stock();
+      const ops = [
+        ...(['MORNING', 'AFTERNOON', 'EVENING'] as const).flatMap((shift, i) => [
+          op('production.create', { coopId: coop1, shift, productionDate: daysAgo(10 + i), entries: [{ unit: 'CRATE', quantity: 2 }] }),
+          op('production.create', { coopId: coop2, shift, productionDate: daysAgo(10 + i), entries: [{ unit: 'CRATE', quantity: 1 }] }),
+        ]),
+        op('customer.create', { name: 'Parallel One' }), op('customer.create', { name: 'Parallel Two' }),
+        op('sale.create', { items: [{ unit: 'CARTON', quantity: 1 }] }),
+      ];
+      const res = await push('manager', ops).expect(200);
+      expect(res.body.results.map((r: { clientId: string }) => r.clientId)).toEqual(ops.map((o) => o.clientId)); // same order as sent
+      expect(results(res)).toEqual(ops.map(() => 'accepted'));
+      expect(await stock()).toBe(before + 3 * 60 + 3 * 30 - 360); // 3×(2+1) crates produced, 1 carton sold: nothing lost under concurrency
+      const rec = (await api(app).get('/v1/inventory/reconciliation').set(bearer(users.manager.token)).expect(200)).body;
+      expect(rec.consistent).toBe(true);
+      expect(await app.get(AuditService).verifyChain(100_000)).toBeNull(); // the audit chain stays intact with parallel writers
+    });
+
+    it('two parallel records for the same coop, date and shift: one is accepted, the other is told it conflicts (never both)', async () => {
+      const date = daysAgo(20);
+      const a = op('production.create', { coopId: coop1, shift: 'MORNING', productionDate: date, entries: [{ unit: 'CRATE', quantity: 1 }] });
+      const b = op('production.create', { coopId: coop1, shift: 'MORNING', productionDate: date, entries: [{ unit: 'CRATE', quantity: 3 }] });
+      const res = await push('manager', [a, b]).expect(200);
+      expect(results(res).sort()).toEqual(['accepted', 'conflict']);
+      expect(await prisma.productionRecord.count({ where: { coopId: coop1, productionDate: new Date(`${date}T00:00:00Z`), status: 'ACTIVE' } })).toBe(1);
+    });
+
     it('is idempotent: re-pushing the same operations answers "duplicate" with the same ids and changes nothing', async () => {
       events.length = 0;
       const before = { stock: await stock(), sales: await prisma.sale.count(), prod: await prisma.productionRecord.count(), exp: await prisma.expense.count(), cust: await prisma.customer.count() };

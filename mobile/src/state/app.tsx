@@ -62,6 +62,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const services = await getServices();
         const queryClient = makeQueryClient();
         const api = createEndpoints(services.api);
+        store.getState().setRetryHandler(() => { void services.engine.retry().catch(() => undefined); });
         if (cancelled) return;
 
         let realtime: RealtimeClient | null = null;

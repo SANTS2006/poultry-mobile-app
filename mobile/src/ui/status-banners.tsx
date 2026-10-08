@@ -7,11 +7,13 @@ export function StatusBanners() {
   const online = sync ? sync.online : true;
   const attention = sync ? sync.conflict + sync.rejected + sync.blocked : 0;
   const waiting = sync ? sync.pending + sync.syncing : 0;
+  const retry = useAppStore((s) => s.retryHandler);
+  const action = retry ? { label: 'Retry', onPress: retry } : undefined;
   return (
     <>
       {!online ? <Banner tone="warn">Offline — you can keep recording. Records are saved on this phone and sent when you are back online.</Banner> : null}
-      {attention > 0 ? <Banner tone="danger">{attention} record{attention === 1 ? '' : 's'} need your attention (open More → Sync).</Banner> : null}
-      {online && waiting > 0 ? <Banner tone="info">Sending {waiting} saved record{waiting === 1 ? '' : 's'}…</Banner> : null}
+      {attention > 0 ? <Banner tone="danger" action={action}>{attention} record{attention === 1 ? '' : 's'} need your attention (open More → Sync).</Banner> : null}
+      {online && waiting > 0 ? <Banner tone="info" action={action}>Sending {waiting} saved record{waiting === 1 ? '' : 's'}…</Banner> : null}
     </>
   );
 }

@@ -32,7 +32,7 @@ export default function NewCustomer() {
       <Segmented label="Type" value={type} onChange={setType} options={[{ value: 'REGULAR', label: 'Regular' }, { value: 'WHOLESALE', label: 'Wholesale' }]} />
       <Field label="Address (optional)" icon="location-outline" {...form.field('address')} multiline maxLength={300} />
       <ProblemList problems={rec.problems} error={rec.error} />
-      <Button title="Save customer" onPress={() => void save()} busy={rec.busy} />
+      <Button title={rec.error ? 'Try again' : 'Save customer'} icon={rec.error ? 'refresh' : undefined} onPress={() => void save()} busy={rec.busy} />
     </SheetScreen>
   );
 }

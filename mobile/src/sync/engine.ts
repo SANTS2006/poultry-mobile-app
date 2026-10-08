@@ -136,6 +136,24 @@ export class SyncEngine {
     await this.emitSummary();
   }
 
+  /**
+   * "Retry" button: tries again right now, skipping the wait between automatic attempts. With an id it retries that record; without one it
+   * retries everything that has not been sent, including records the server refused or that were held back, and resets their attempt count so
+   * the automatic schedule starts from the short waits again. Resolves with what the run achieved.
+   */
+  async retry(clientId?: string): Promise<SyncReport> {
+    if (this.authRequired) return { sent: 0, synced: 0, conflicts: 0, rejected: 0, blocked: 0, retryLater: 0, networkFailure: false, skipped: 'auth_required' };
+    if (this.running) await this.running.catch(() => undefined); // never edit records that are in flight
+    const stamp = this.now().toISOString();
+    for (const i of await this.storage.list({ statuses: ['pending', 'syncing', 'conflict', 'rejected', 'blocked'] })) {
+      if (clientId && i.clientId !== clientId) continue;
+      await this.storage.update(i.clientId, { status: 'pending', attempts: 0, nextAttemptAt: null, updatedAt: stamp });
+      if (NEEDS_DECISION.includes(i.status)) await this.unblockDependents(i.clientId);
+    }
+    await this.emitSummary();
+    return this.sync();
+  }
+
   /** Fix a rejected record (e.g. a typo the server refused) and resend it under the same operation id. */
   async correctAndRetry(clientId: string, payload: Record<string, unknown>): Promise<void> {
     const item = await this.storage.get(clientId);

@@ -68,7 +68,7 @@ export default function NewProduction() {
       </Card>
       <Field label="Notes (optional)" value={notes} onChangeText={setNotes} multiline maxLength={500} />
       <ProblemList problems={rec.problems} error={rec.error} />
-      <Button title="Save production" onPress={() => void save()} busy={rec.busy} />
+      <Button title={rec.error ? 'Try again' : 'Save production'} icon={rec.error ? 'refresh' : undefined} onPress={() => void save()} busy={rec.busy} />
     </Screen>
   );
 }

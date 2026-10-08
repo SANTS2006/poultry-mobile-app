@@ -15,15 +15,19 @@ export interface AppState {
   setRealtime(s: 'connected' | 'disconnected'): void;
   setLocked(v: boolean): void;
   setBiometricLock(v: boolean): void;
+  /** "Retry" for unsent records, set by the app once the sync engine exists (so shared UI can offer it without knowing about services) */
+  retryHandler: (() => void) | null;
+  setRetryHandler(h: (() => void) | null): void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  status: 'booting', user: null, sync: null, realtime: 'disconnected', locked: false, biometricLock: false,
+  status: 'booting', user: null, sync: null, realtime: 'disconnected', locked: false, biometricLock: false, retryHandler: null,
   setSession: (status, user) => set({ status, user }),
   setSync: (sync) => set({ sync }),
   setRealtime: (realtime) => set({ realtime }),
   setLocked: (locked) => set({ locked }),
   setBiometricLock: (biometricLock) => set({ biometricLock }),
+  setRetryHandler: (retryHandler) => set({ retryHandler }),
 }));
 
 /** UI-side permission check (convenience only: the server enforces every permission again). */

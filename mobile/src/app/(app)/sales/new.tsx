@@ -127,7 +127,7 @@ export default function NewSale() {
       {pay !== 'FULL' ? <Text size="small" muted>Credit must be switched on by an administrator and allowed for this customer; otherwise the server will refuse the sale.</Text> : null}
 
       <ProblemList problems={rec.problems} error={rec.error} />
-      <Button title="Save sale" onPress={() => void save()} busy={rec.busy} />
+      <Button title={rec.error ? 'Try again' : 'Save sale'} icon={rec.error ? 'refresh' : undefined} onPress={() => void save()} busy={rec.busy} />
     </Screen>
   );
 }

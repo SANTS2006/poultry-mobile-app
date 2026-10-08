@@ -106,12 +106,16 @@ export class ExpensesService {
         return { expense: presentExpense(prior), created: false };
       }
     }
+    // Read-only lookups happen before the transaction, side by side (each statement inside a transaction is a database round trip).
+    const [category, supplier] = await Promise.all([
+      this.prisma.expenseCategory.findFirst({ where: { code: dto.categoryCode, active: true } }),
+      dto.supplierId ? this.prisma.supplier.findFirst({ where: { id: dto.supplierId, active: true, deletedAt: null } }) : Promise.resolve(true),
+    ]);
+    if (!category) throw new BadRequestException('Unknown or inactive expense category.');
+    if (!supplier) throw new BadRequestException('Unknown supplier.');
     let row: Row;
     try {
       row = await this.prisma.$transaction(async (tx) => {
-        const category = await tx.expenseCategory.findFirst({ where: { code: dto.categoryCode, active: true } });
-        if (!category) throw new BadRequestException('Unknown or inactive expense category.');
-        if (dto.supplierId && !(await tx.supplier.findFirst({ where: { id: dto.supplierId, active: true, deletedAt: null } }))) throw new BadRequestException('Unknown supplier.');
         const created = await tx.expense.create({
           data: {
             farmId, categoryId: category.id, supplierId: dto.supplierId, description: dto.description, quantity: amounts.quantity, unitCost: amounts.unitCost,

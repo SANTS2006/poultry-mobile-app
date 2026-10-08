@@ -24,7 +24,7 @@ export class PricingService {
   }
 
   /** Authoritative price at a point in time; sales never trust a client-supplied price. */
-  async priceAt(client: Prisma.TransactionClient, unit: UnitInfo, at: Date): Promise<Prisma.Decimal> {
+  async priceAt(client: Prisma.TransactionClient | PrismaService, unit: UnitInfo, at: Date): Promise<Prisma.Decimal> {
     const price = await client.price.findFirst({
       where: { productUnitId: unit.id, effectiveFrom: { lte: at }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }] },
       orderBy: { effectiveFrom: 'desc' },
