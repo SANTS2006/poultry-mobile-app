@@ -28,3 +28,10 @@ Nothing here is wired to a monitoring vendor yet (no account exists); the applic
 
 ## Known operational limits
 Single API instance; no automatic failover. Neon free/low tiers can cold-start the database (first request slow). Realtime is best-effort; the app always works without it.
+
+## Why requests can be slow, and what was done about it
+Almost all of the time in a request is **round trips to the database**: each query waits for the network. If the API and the database are far apart (for example the API on a laptop in Africa and Neon in `us-east-2`), one query can cost 0.5–1 s, and a record that needs 15–25 queries takes 10–20 s. Measured from the logs of a real session: sign-in state, settings, reference data and dashboards each cost several round trips, and a production record needed more than 5 s inside a transaction (the old Prisma limit), so it failed half-way and was retried forever.
+
+What the code now does: fewer queries per request (cached sign-in state for 10 s with immediate invalidation, cached settings/units/farm/coops/shifts, one-statement stock updates, parallel dashboard and reference queries, dashboard sections cached 15 s and emptied by any business event), a 60 s transaction limit, and on the phone small sync batches (5 records), a 90 s push limit, and last-known answers kept on the phone so screens open instantly.
+
+What only deployment can fix: **put the API in the same region as the database**. Check with `GET /health/ready`: `dbRoundTripMs` should be under about 20 ms in production; if it is hundreds of milliseconds, move the API or the Neon project (and use Neon's pooled connection string, host containing `-pooler`).
