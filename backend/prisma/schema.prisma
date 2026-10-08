@@ -125,6 +125,8 @@ model User {
   mfaSecret               MfaSecret?
   recoveryCodes           RecoveryCode[]
   emailTokens             EmailToken[]
+  resetCodes              PasswordResetCode[]
+  passwordHistory         PasswordHistory[]
   devices                 NotificationDevice[]
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
@@ -234,6 +236,32 @@ model EmailToken {
   user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, type])
+}
+
+/// One-time password-reset codes: 8 digits, valid 5 minutes, bound to the e-mail address they were sent to, locked after 5 wrong tries.
+model PasswordResetCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  email     String
+  codeHash  String
+  attempts  Int       @default(0)
+  expiresAt DateTime  @db.Timestamptz
+  usedAt    DateTime? @db.Timestamptz
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+/// The last few password hashes of each user, so a password cannot be reused straight away.
+model PasswordHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  hash      String
+  createdAt DateTime @default(now()) @db.Timestamptz
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 // ───────────────────────── Farm ─────────────────────────

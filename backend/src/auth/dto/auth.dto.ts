@@ -36,7 +36,10 @@ export class TokenDto {
   @IsString() @Length(20, 200) token!: string;
 }
 
-export class ResetPasswordDto extends TokenDto {
+export class ResetPasswordDto {
+  @Transform(trimLower) @IsEmail() @MaxLength(254) email!: string;
+  /** 8 digits; spaces are ignored (the e-mail shows them in two groups of four) */
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.replace(/\s+/g, '') : value)) @Matches(/^\d{8}$/, { message: 'code must be 8 digits' }) code!: string;
   @IsString() @MaxLength(128) newPassword!: string;
 }
 

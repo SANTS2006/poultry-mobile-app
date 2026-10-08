@@ -1,6 +1,8 @@
 import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { PasswordHistoryService } from './password-history.service';
+import { PasswordResetService } from './password-reset.service';
 import { PasswordService } from '../common/crypto/password.service';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import type { Env } from '../config/env';
@@ -26,9 +28,9 @@ import { TokenService } from './token.service';
   ],
   controllers: [AuthController],
   providers: [
-    PasswordService, EncryptionService, TokenService, SessionService, MfaService, EmailTokenService,
+    PasswordService, EncryptionService, TokenService, SessionService, MfaService, EmailTokenService, PasswordResetService, PasswordHistoryService,
     AuthService, AuthenticationService, JwtAuthGuard, PermissionsGuard,
   ],
-  exports: [PasswordService, EncryptionService, TokenService, SessionService, MfaService, EmailTokenService, AuthService, AuthenticationService, JwtAuthGuard, PermissionsGuard],
+  exports: [PasswordService, EncryptionService, TokenService, SessionService, MfaService, EmailTokenService, PasswordResetService, PasswordHistoryService, AuthService, AuthenticationService, JwtAuthGuard, PermissionsGuard],
 })
 export class AuthModule {}

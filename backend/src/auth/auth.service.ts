@@ -9,6 +9,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { AuthUser, RequestMeta } from './auth.types';
 import { EmailTokenService } from './email-token.service';
 import { MfaService } from './mfa.service';
+import { PasswordHistoryService } from './password-history.service';
+import { PasswordResetService } from './password-reset.service';
 import { passwordProblems } from './password-policy';
 import { SessionService } from './session.service';
 import { ACCESS_TTL_SECONDS, TokenService } from './token.service';
@@ -44,6 +46,8 @@ export class AuthService {
     private readonly emailTokens: EmailTokenService,
     private readonly audit: AuditService,
     private readonly mail: MailComposer,
+    private readonly resets: PasswordResetService,
+    private readonly history: PasswordHistoryService,
     private readonly events: DomainEvents,
   ) {}
 
@@ -235,7 +239,7 @@ export class AuthService {
     if (!user || user.tokenVersion !== claims.tv || !user.mustChangePassword || user.status === 'DISABLED') {
       throw new UnauthorizedException('Your session is invalid or has expired. Please sign in again.');
     }
-    const problems = passwordProblems(newPassword, { email: user.email });
+    const problems = passwordProblems(newPassword, await this.policyContext(user.email, user.id));
     if (problems.length) throw new BadRequestException(problems.join(' '));
     if (await this.passwords.verify(user.passwordHash, newPassword)) throw new BadRequestException('Choose a password different from the temporary one.');
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -254,29 +258,25 @@ export class AuthService {
     return this.afterPassword(updated, meta);
   }
 
+  /** Sends an 8-digit, 5-minute, single-use reset code (see PasswordResetService). Always answers the same way. */
   async forgotPassword(emailRaw: string, meta: RequestMeta): Promise<void> {
-    const user = await this.prisma.user.findUnique({ where: { email: emailRaw.trim().toLowerCase() } });
-    if (!user || user.status === 'DISABLED' || !user.passwordHash) return; // silent: identical response for every input
-    const token = await this.emailTokens.issue(user.id, 'RESET_PASSWORD');
-    await this.emailTokens.sendLink(user.email, 'RESET_PASSWORD', token);
-    await this.audit.record({ action: 'auth.password.reset_requested', userId: user.id, entityType: 'user', entityId: user.id, ip: meta.ip, requestId: meta.requestId });
+    await this.resets.request(emailRaw, meta);
   }
 
-  async resetPassword(token: string, newPassword: string, meta: RequestMeta): Promise<void> {
-    const userId = await this.emailTokens.consume(token, 'RESET_PASSWORD');
-    if (!userId) throw new BadRequestException('This link is invalid or has expired.');
+  async resetPassword(emailRaw: string, code: string, newPassword: string, meta: RequestMeta): Promise<void> {
+    const { userId, codeId } = await this.resets.verify(emailRaw, code, meta); // wrong code: counted, generic error
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    const problems = passwordProblems(newPassword, { email: user.email });
-    if (problems.length) {
-      const retry = await this.emailTokens.issue(userId, 'RESET_PASSWORD');
-      await this.emailTokens.sendLink(user.email, 'RESET_PASSWORD', retry);
-      throw new BadRequestException(`${problems.join(' ')} A fresh reset link has been emailed to you.`);
-    }
+    // The new password is checked BEFORE the code is used up, so a too-weak choice can be corrected within the same 5 minutes.
+    const problems = passwordProblems(newPassword, await this.policyContext(user.email, userId));
+    if (problems.length) throw new BadRequestException(problems.join(' '));
+    await this.history.assertNotReused(userId, newPassword, user.passwordHash);
+    if (!(await this.resets.consume(codeId))) throw new BadRequestException('That code is incorrect or has expired. Request a new one.'); // lost a race: used or expired meanwhile
     const passwordHash = await this.passwords.hash(newPassword);
     await this.prisma.$transaction(async (tx) => {
+      await this.history.remember(tx, userId, user.passwordHash);
       await tx.user.update({
         where: { id: userId },
-        data: { passwordHash, emailVerified: true, failedAttempts: 0, lockedUntil: null, tokenVersion: { increment: 1 }, ...(user.status === 'LOCKED' ? { status: 'ACTIVE' } : {}) },
+        data: { passwordHash, emailVerified: true, mustChangePassword: false, tempPasswordExpiresAt: null, failedAttempts: 0, lockedUntil: null, tokenVersion: { increment: 1 }, ...(user.status === 'LOCKED' || (user.status === 'INVITED' && user.mustChangePassword) ? { status: 'ACTIVE' } : {}) },
       });
       await this.audit.record({ action: 'auth.password.reset', userId, entityType: 'user', entityId: userId, ip: meta.ip, requestId: meta.requestId }, tx);
     });
@@ -295,9 +295,11 @@ export class AuthService {
       throw new ForbiddenException('Your current password is incorrect.');
     }
     if (currentPassword === newPassword) throw new BadRequestException('Choose a password different from your current one.');
-    const problems = passwordProblems(newPassword, { email: user.email });
+    const problems = passwordProblems(newPassword, await this.policyContext(user.email, user.id));
     if (problems.length) throw new BadRequestException(problems.join(' '));
+    await this.history.assertNotReused(user.id, newPassword, row.passwordHash);
     await this.prisma.$transaction(async (tx) => {
+      await this.history.remember(tx, user.id, row.passwordHash);
       await tx.user.update({ where: { id: user.id }, data: { passwordHash: await this.passwords.hash(newPassword) } });
       await this.audit.record({ action: 'auth.password.changed', userId: user.id, userName: user.fullName, entityType: 'user', entityId: user.id, ip: meta.ip, requestId: meta.requestId }, tx);
     });
@@ -345,6 +347,12 @@ export class AuthService {
   }
 
   // ───────────── helpers ─────────────
+
+  /** What the password policy needs to know to refuse passwords built from the person's own details or the business name. */
+  private async policyContext(email: string, userId: string) {
+    const profile = await this.prisma.profile.findUnique({ where: { userId }, select: { fullName: true } });
+    return { email, fullName: profile?.fullName, businessName: await this.mail.businessName() };
+  }
 
   async summary(userId: string): Promise<UserSummary> {
     const u = await this.prisma.user.findUniqueOrThrow({

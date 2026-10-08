@@ -91,12 +91,12 @@ export class AuthController {
   @Public() @Throttle({ default: { limit: 3, ttl: 60_000 } }) @HttpCode(202) @Post('forgot-password')
   async forgot(@Body() dto: EmailOnlyDto, @Meta() meta: RequestMeta) {
     await this.auth.forgotPassword(dto.email, meta);
-    return { message: 'If an account exists for that email, a reset link has been sent.' };
+    return { message: 'If an account exists for that email, a reset code has been sent.' };
   }
 
   @Public() @Throttle(MODERATE) @HttpCode(204) @Post('reset-password')
   async reset(@Body() dto: ResetPasswordDto, @Meta() meta: RequestMeta): Promise<void> {
-    await this.auth.resetPassword(dto.token, dto.newPassword, meta);
+    await this.auth.resetPassword(dto.email, dto.code, dto.newPassword, meta);
   }
 
   @AnyAuthenticated() @Throttle(MODERATE) @HttpCode(204) @Post('change-password')

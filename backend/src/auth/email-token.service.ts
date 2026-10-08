@@ -6,8 +6,8 @@ import { randomToken, sha256 } from '../common/crypto/tokens';
 import { MailComposer } from '../mail/mail-composer.service';
 import { PrismaService } from '../prisma/prisma.service';
 
-/** Invitations no longer use tokens (a temporary password is e-mailed instead); the INVITE value stays in the database enum only. */
-type LinkType = 'VERIFY_EMAIL' | 'RESET_PASSWORD';
+/** Only e-mail confirmation uses a long token now: invitations e-mail a temporary password and password resets use 8-digit codes (PasswordResetService). The other enum values stay in the database only. */
+type LinkType = 'VERIFY_EMAIL';
 
 const TTL_MS: Record<EmailTokenType, number> = {
   VERIFY_EMAIL: 24 * 3600_000,
@@ -15,7 +15,7 @@ const TTL_MS: Record<EmailTokenType, number> = {
   INVITE: 72 * 3600_000,
 };
 
-const PATH: Record<LinkType, string> = { VERIFY_EMAIL: 'verify-email', RESET_PASSWORD: 'reset-password' };
+const PATH: Record<LinkType, string> = { VERIFY_EMAIL: 'verify-email' };
 
 /** Single-use, expiring, hashed-at-rest tokens for e-mail verification, password reset and invitations. */
 @Injectable()
@@ -50,17 +50,13 @@ export class EmailTokenService {
   async sendLink(email: string, type: LinkType, token: string): Promise<void> {
     const link = `${this.linkBase}${PATH[type]}?token=${encodeURIComponent(token)}`;
     const hours = Math.max(1, Math.round(TTL_MS[type] / 3600_000));
-    const reset = type === 'RESET_PASSWORD';
-    await this.mail.send(email, reset ? 'Reset your password' : 'Confirm your email address', {
-      preheader: reset ? 'Use this code to choose a new password.' : 'Confirm this email address for your account.',
-      heading: reset ? 'Reset your password' : 'Confirm your email address',
-      paragraphs: [
-        reset ? 'We received a request to reset the password for your account.' : 'Please confirm this email address for your account.',
-        reset ? 'In the app, open Forgot password, then choose “I have a reset code” and paste the code below.' : 'In the app, open Settings, then Email address, and paste the code below.',
-      ],
-      details: [{ label: reset ? 'Reset code' : 'Confirmation code', value: token, emphasis: true }, { label: 'Valid for', value: `${hours} hour${hours === 1 ? '' : 's'}, one use only` }],
-      button: { label: reset ? 'Open the app to reset' : 'Open the app to confirm', url: link },
-      note: reset ? 'If you did not ask for this, ignore this email: your password has not changed.' : 'If you did not expect this email, ignore it.',
+    await this.mail.send(email, 'Confirm your email address', {
+      preheader: 'Confirm this email address for your account.',
+      heading: 'Confirm your email address',
+      paragraphs: ['Please confirm this email address for your account.', 'In the app, open Settings, then Email address, and paste the code below.'],
+      details: [{ label: 'Confirmation code', value: token, emphasis: true }, { label: 'Valid for', value: `${hours} hour${hours === 1 ? '' : 's'}, one use only` }],
+      button: { label: 'Open the app to confirm', url: link },
+      note: 'If you did not expect this email, ignore it.',
     });
   }
 }

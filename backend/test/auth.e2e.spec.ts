@@ -438,31 +438,114 @@ describe('Authentication, sessions, MFA, RBAC (e2e, real PostgreSQL)', () => {
       expect(known.body).toEqual(unknown.body);
     });
 
-    it('resets the password with a single-use expiring token, signs out all devices, and blocks the old password', async () => {
+    /** Reads the 8-digit code out of the most recent reset e-mail (shown as two groups of four). */
+    const codeFromMail = (to: string): string => {
+      const m = [...mail.outbox].reverse().find((x) => x.to === to && x.subject.includes('reset code'));
+      const c = m?.text.match(/Reset code: (\d{4} \d{4})/);
+      if (!c) throw new Error(`no reset code mail for ${to}`);
+      return c[1].replace(' ', '');
+    };
+    const resetPw = (email: string, code: string, newPassword: string) => api(app).post('/v1/auth/reset-password').send({ email, code, newPassword });
+    const reset = (email: string) => api(app).post('/v1/auth/forgot-password').send({ email }).expect(202);
+    const expireCooldown = (userId: string) => prisma.passwordResetCode.updateMany({ where: { userId }, data: { createdAt: new Date(Date.now() - 120_000) } });
+    const newPw = 'meadow-gravel-orbit-58';
+
+    it('resets the password with a single-use 8-digit code, signs out all devices, blocks the old password and remembers it', async () => {
       const u = await makeUser(prisma, { roles: ['SALES_STAFF'] });
       const s = await signIn(app, u.email);
-      await api(app).post('/v1/auth/forgot-password').send({ email: u.email }).expect(202);
-      const token = tokenFromMail(mail, u.email);
-      const newPw = 'meadow-gravel-orbit-58';
-      await api(app).post('/v1/auth/reset-password').send({ token, newPassword: newPw }).expect(204);
-      await api(app).post('/v1/auth/reset-password').send({ token, newPassword: 'another-fine-pass-77' }).expect(400); // replay
+      await reset(u.email);
+      const code = codeFromMail(u.email);
+      const msg = [...mail.outbox].reverse().find((x) => x.to === u.email)!;
+      expect(msg.text).toMatch(/5 minutes/);
+      expect(msg.html).toContain(u.email);
+      await resetPw(u.email, code, newPw).expect(204);
+      await resetPw(u.email, code, 'another-fine-pass-77').expect(400); // replay: the code is used up
       await api(app).get('/v1/auth/me').set(bearer(s.accessToken)).expect(401);
       await login(app, u.email, PASSWORD).expect(401);
       await login(app, u.email, newPw).expect(200);
+      expect(await prisma.passwordHistory.count({ where: { userId: u.id } })).toBe(1);
+      expect(await prisma.passwordResetCode.findFirstOrThrow({ where: { userId: u.id } }).then((r) => r.codeHash)).not.toContain(code); // only a keyed hash is stored
     });
 
-    it('rejects weak reset passwords and expired reset tokens', async () => {
+    it('the code works only for the e-mail address it was sent to, and only while the account still has that address', async () => {
+      const a = await makeUser(prisma, { roles: ['SALES_STAFF'] });
+      const b = await makeUser(prisma, { roles: ['SALES_STAFF'] });
+      await reset(a.email);
+      const code = codeFromMail(a.email);
+      await resetPw(b.email, code, newPw).expect(400); // someone else's address
+      await resetPw(a.email.toUpperCase(), code, newPw).expect(204); // same address, case-insensitively
+      await reset(b.email);
+      const codeB = codeFromMail(b.email);
+      await prisma.user.update({ where: { id: b.id }, data: { email: uniqueEmail('moved') } });
+      await resetPw(b.email, codeB, newPw).expect(400); // the address changed after the code was sent
+    });
+
+    it('expires after 5 minutes, locks after 5 wrong tries, and a new code replaces the old one', async () => {
       const u = await makeUser(prisma, { roles: ['SALES_STAFF'] });
-      await api(app).post('/v1/auth/forgot-password').send({ email: u.email }).expect(202);
-      const token = tokenFromMail(mail, u.email);
-      await api(app).post('/v1/auth/reset-password').send({ token, newPassword: 'weak' }).expect(400);
-      await api(app).post('/v1/auth/forgot-password').send({ email: u.email }).expect(202);
-      const t2 = tokenFromMail(mail, u.email);
-      await prisma.emailToken.updateMany({ where: { userId: u.id, type: 'RESET_PASSWORD' }, data: { expiresAt: new Date(Date.now() - 1000) } });
-      await api(app).post('/v1/auth/reset-password').send({ token: t2, newPassword: 'meadow-gravel-orbit-58' }).expect(400);
+      await reset(u.email);
+      const stale = codeFromMail(u.email);
+      const row = await prisma.passwordResetCode.findFirstOrThrow({ where: { userId: u.id } });
+      expect(Math.abs(row.expiresAt.getTime() - row.createdAt.getTime() - 5 * 60_000)).toBeLessThan(3000); // five minutes
+      await prisma.passwordResetCode.update({ where: { id: row.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+      await resetPw(u.email, stale, newPw).expect(400);
+
+      await expireCooldown(u.id);
+      await reset(u.email);
+      const good = codeFromMail(u.email);
+      expect(good).not.toBe(stale);
+      const wrong = good === '00000000' ? '11111111' : '00000000';
+      for (let i = 0; i < 5; i++) await resetPw(u.email, wrong, newPw).expect(400);
+      await resetPw(u.email, good, newPw).expect(400); // locked even for the right code
+      expect(await prisma.auditLog.count({ where: { userId: u.id, action: 'auth.password.reset_code_locked' } })).toBe(1);
+
+      await expireCooldown(u.id);
+      await reset(u.email);
+      const fresh = codeFromMail(u.email);
+      await resetPw(u.email, fresh, newPw).expect(204);
     });
 
-    it('does not send reset links to disabled accounts', async () => {
+    it('sends at most one code a minute per account and answers every request the same way', async () => {
+      const u = await makeUser(prisma, { roles: ['SALES_STAFF'] });
+      const before = mail.outbox.length;
+      const first = await reset(u.email);
+      const second = await reset(u.email);
+      expect(first.body).toEqual(second.body);
+      expect(mail.outbox.length).toBe(before + 1);
+      await api(app).post('/v1/auth/reset-password').send({ email: uniqueEmail('nobody'), code: '12345678', newPassword: newPw }).expect(400); // unknown account: same generic error
+    });
+
+    it('rejects weak or recent passwords without using up the code, so it can be corrected within the 5 minutes', async () => {
+      const u = await makeUser(prisma, { roles: ['SALES_STAFF'] });
+      await reset(u.email);
+      const code = codeFromMail(u.email);
+      await resetPw(u.email, code, 'weak').expect(400);
+      await resetPw(u.email, code, PASSWORD).expect(400); // the current password counts as recently used
+      await resetPw(u.email, code, newPw).expect(204);
+      await expireCooldown(u.id);
+      await reset(u.email);
+      await resetPw(u.email, codeFromMail(u.email), PASSWORD).expect(400); // an earlier password is remembered too
+    });
+
+    it('refuses passwords built from a common word, the business name, the person’s name or an obvious pattern', async () => {
+      const u = await makeUser(prisma, { roles: ['SALES_STAFF'], fullName: 'Fatmata Kamara' });
+      const s = await signIn(app, u.email);
+      for (const bad of ['Welcome-2026-abc!', 'Makarifor-Agri-9x7!', 'fatmata-kamara-2026', 'abcdefgh-ijklmn', 'abcabcabcabcabc', 'Poultry2026!!']) {
+        const r = await api(app).post('/v1/auth/change-password').set(bearer(s.accessToken)).send({ currentPassword: PASSWORD, newPassword: bad }).expect(400);
+        expect(r.body.message).toBeTruthy();
+      }
+    });
+
+    it('does not let the last five passwords be reused when changing the password', async () => {
+      const u = await makeUser(prisma, { roles: ['SALES_STAFF'] });
+      let s = await signIn(app, u.email);
+      const first = 'orchard-violet-engine-41';
+      await api(app).post('/v1/auth/change-password').set(bearer(s.accessToken)).send({ currentPassword: PASSWORD, newPassword: first }).expect(204);
+      s = await signIn(app, u.email, first);
+      const r = await api(app).post('/v1/auth/change-password').set(bearer(s.accessToken)).send({ currentPassword: first, newPassword: PASSWORD }).expect(400);
+      expect(r.body.message).toMatch(/not used recently/);
+    });
+
+    it('does not send reset codes to disabled accounts', async () => {
       const u = await makeUser(prisma, { roles: ['SALES_STAFF'], status: 'DISABLED' });
       const before = mail.outbox.length;
       await api(app).post('/v1/auth/forgot-password').send({ email: u.email }).expect(202);
