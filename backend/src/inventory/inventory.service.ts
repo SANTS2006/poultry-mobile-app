@@ -28,14 +28,26 @@ export class InventoryService {
   constructor(private readonly prisma: PrismaService, private readonly pricing: PricingService, private readonly settings: SettingsService) {}
 
   async post(tx: Prisma.TransactionClient, e: LedgerEntry): Promise<{ balance: number; transactionId: string }> {
-    await tx.$executeRaw`
-      INSERT INTO "InventoryBalance" ("farmId", "productId", "quantityEggs", "updatedAt")
-      VALUES (${e.farmId}::uuid, ${e.productId}::uuid, 0, now()) ON CONFLICT DO NOTHING`;
-    const rows = await tx.$queryRaw<{ quantityEggs: number }[]>`
-      SELECT "quantityEggs" FROM "InventoryBalance" WHERE "farmId" = ${e.farmId}::uuid AND "productId" = ${e.productId}::uuid FOR UPDATE`;
-    const current = rows[0].quantityEggs;
-    const next = current + e.quantityEggs;
-    if (next < 0) {
+    // ONE statement changes the balance: it locks the row, refuses to go below zero, and returns the new level. (It used to be four
+    // statements — create row, lock, read, update — and every statement is a network round trip to the database.)
+    let next: number | null;
+    if (e.quantityEggs >= 0) {
+      const rows = await tx.$queryRaw<{ quantityEggs: number }[]>`
+        INSERT INTO "InventoryBalance" ("farmId", "productId", "quantityEggs", "updatedAt")
+        VALUES (${e.farmId}::uuid, ${e.productId}::uuid, ${e.quantityEggs}, now())
+        ON CONFLICT ("farmId", "productId") DO UPDATE SET "quantityEggs" = "InventoryBalance"."quantityEggs" + EXCLUDED."quantityEggs", "updatedAt" = now()
+        RETURNING "quantityEggs"`;
+      next = rows[0]?.quantityEggs ?? null;
+    } else {
+      const rows = await tx.$queryRaw<{ quantityEggs: number }[]>`
+        UPDATE "InventoryBalance" SET "quantityEggs" = "quantityEggs" + ${e.quantityEggs}, "updatedAt" = now()
+        WHERE "farmId" = ${e.farmId}::uuid AND "productId" = ${e.productId}::uuid AND "quantityEggs" + ${e.quantityEggs} >= 0
+        RETURNING "quantityEggs"`;
+      next = rows[0]?.quantityEggs ?? null;
+    }
+    if (next === null) {
+      // Nothing was updated: not enough stock (or no balance row yet, which means zero eggs). Only now do we read the current level, for the message.
+      const current = await this.balance(e.farmId, e.productId, tx);
       throw new ConflictException(`Insufficient stock: ${current} eggs available, ${-e.quantityEggs} requested.`);
     }
     const t = await tx.inventoryTransaction.create({
@@ -44,14 +56,11 @@ export class InventoryService {
         sourceType: e.sourceType, sourceId: e.sourceId, reason: e.reason, createdById: e.createdById, clientId: e.clientId,
       },
     });
-    await tx.inventoryBalance.update({
-      where: { farmId_productId: { farmId: e.farmId, productId: e.productId } }, data: { quantityEggs: next },
-    });
     return { balance: next, transactionId: t.id };
   }
 
-  async balance(farmId: string, productId: string): Promise<number> {
-    const b = await this.prisma.inventoryBalance.findUnique({ where: { farmId_productId: { farmId, productId } } });
+  async balance(farmId: string, productId: string, client: Prisma.TransactionClient | PrismaService = this.prisma): Promise<number> {
+    const b = await client.inventoryBalance.findUnique({ where: { farmId_productId: { farmId, productId } } });
     return b?.quantityEggs ?? 0;
   }
 

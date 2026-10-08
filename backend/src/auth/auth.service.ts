@@ -82,7 +82,7 @@ export class AuthService {
       throw new ForbiddenException('Your temporary password has expired. Ask an administrator to send you a new invitation.');
     }
 
-    await this.prisma.user.update({ where: { id: user.id }, data: { failedAttempts: 0, lockedUntil: null } });
+    if (user.failedAttempts > 0 || user.lockedUntil) await this.prisma.user.update({ where: { id: user.id }, data: { failedAttempts: 0, lockedUntil: null } }); // nothing to clear on the usual sign-in: skip the round trip
     if (this.passwords.needsRehash(user.passwordHash as string)) {
       await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash: await this.passwords.hash(password) } });
     }

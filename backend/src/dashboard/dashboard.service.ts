@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { AuthUser } from '../auth/auth.types';
 import { fromDbDate, toDbDate } from '../common/dates';
+import { TtlCache } from '../common/cache';
+import { DomainEvents } from '../domain/events.service';
 import { FarmService } from '../domain/farm.service';
 import { SettingsService } from '../domain/settings.service';
 import { InventoryService } from '../inventory/inventory.service';
@@ -19,8 +21,17 @@ const days = (from: string, to: string): string[] => { const out: string[] = [];
 export class DashboardService {
   constructor(
     private readonly prisma: PrismaService, private readonly farms: FarmService, private readonly settings: SettingsService,
-    private readonly inventory: InventoryService,
-  ) {}
+    private readonly inventory: InventoryService, events: DomainEvents,
+  ) {
+    // Any business change empties the cache, so figures are never older than the last change (or 15 s, whichever is shorter).
+    events.on('*', (e) => { if (/^(production|sale|payment|expense|customer|inventory)\./.test(e.name)) this.cache.clear(); });
+  }
+
+  /** Each dashboard section, computed once and shared by everybody who may see it. Dashboards are the most expensive read in the app (many queries). */
+  private readonly cache = new TtlCache<unknown>(15_000);
+  private section<T>(farmId: string, name: string, today: string, load: () => Promise<T>): Promise<T> {
+    return this.cache.get(`${farmId}:${name}:${today}`, load) as Promise<T>;
+  }
 
   async build(user: AuthUser, farmIdIn?: string) {
     const has = (p: string) => user.permissions.includes(p);
@@ -31,17 +42,28 @@ export class DashboardService {
     const monthStart = `${today.slice(0, 7)}-01`;
     const out: Record<string, unknown> = { businessDate: today, farmId, generatedAt: new Date().toISOString(), currency: await this.settings.get<string>('business.currency') };
 
-    if (has('production.read')) out.production = await this.production(farmId, today, start);
-    if (has('inventory.read')) out.inventory = await this.inventory.snapshot(farmId);
-    if (has('sales.read')) out.sales = await this.sales(farmId, today, start, monthStart, has('customers.read'));
-    if (has('customers.read')) out.customers = await this.customers(monthStart);
-    if (has('expenses.read')) out.expenses = await this.expenses(farmId, today, start, monthStart);
-    if (has('payments.read') && has('expenses.read')) out.cash = await this.cash(farmId, today, tz);
-    if (has('customers.financial')) out.receivables = await this.receivables(farmId);
+    // Sections are independent: ask for all of them at once instead of one after the other.
+    const [production, inventory, sales, customers, expenses, cash, receivables, reviewProduction, reviewSales, reviewExpenses] = await Promise.all([
+      has('production.read') ? this.section(farmId, 'production', today, () => this.production(farmId, today, start)) : undefined,
+      has('inventory.read') ? this.section(farmId, 'inventory', today, () => this.inventory.snapshot(farmId)) : undefined,
+      has('sales.read') ? this.section(farmId, `sales:${has('customers.read')}`, today, () => this.sales(farmId, today, start, monthStart, has('customers.read'))) : undefined,
+      has('customers.read') ? this.section(farmId, 'customers', today, () => this.customers(monthStart)) : undefined,
+      has('expenses.read') ? this.section(farmId, 'expenses', today, () => this.expenses(farmId, today, start, monthStart)) : undefined,
+      has('payments.read') && has('expenses.read') ? this.section(farmId, 'cash', today, () => this.cash(farmId, today, tz)) : undefined,
+      has('customers.financial') ? this.section(farmId, 'receivables', today, () => this.receivables(farmId)) : undefined,
+      has('production.read') ? this.section(farmId, 'review:production', today, () => this.prisma.productionRecord.count({ where: { farmId, status: 'ACTIVE', needsReview: true } })) : undefined,
+      has('sales.read') ? this.section(farmId, 'review:sales', today, () => this.prisma.sale.count({ where: { farmId, status: 'ACTIVE', needsReview: true } })) : undefined,
+      has('expenses.read') ? this.section(farmId, 'review:expenses', today, () => this.prisma.expense.count({ where: { farmId, status: 'ACTIVE', needsReview: true } })) : undefined,
+    ]);
+    if (production) out.production = production;
+    if (inventory) out.inventory = inventory;
+    if (sales) out.sales = sales;
+    if (customers) out.customers = customers;
+    if (expenses) out.expenses = expenses;
+    if (cash) out.cash = cash;
+    if (receivables) out.receivables = receivables;
     out.needsReview = {
-      ...(has('production.read') ? { production: await this.prisma.productionRecord.count({ where: { farmId, status: 'ACTIVE', needsReview: true } }) } : {}),
-      ...(has('sales.read') ? { sales: await this.prisma.sale.count({ where: { farmId, status: 'ACTIVE', needsReview: true } }) } : {}),
-      ...(has('expenses.read') ? { expenses: await this.prisma.expense.count({ where: { farmId, status: 'ACTIVE', needsReview: true } }) } : {}),
+      ...(reviewProduction !== undefined ? { production: reviewProduction } : {}), ...(reviewSales !== undefined ? { sales: reviewSales } : {}), ...(reviewExpenses !== undefined ? { expenses: reviewExpenses } : {}),
     };
     return out;
   }

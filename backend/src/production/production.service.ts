@@ -6,6 +6,7 @@ import { daysBetween, eventTime, fromDbDate, isValidDate, toDbDate } from '../co
 import { Page, paging } from '../common/pagination';
 import { DomainEvents } from '../domain/events.service';
 import { FarmService } from '../domain/farm.service';
+import { ReferenceService } from '../domain/reference.service';
 import { PricingService } from '../domain/pricing.service';
 import { SettingsService } from '../domain/settings.service';
 import { InventoryService } from '../inventory/inventory.service';
@@ -32,7 +33,7 @@ export class ProductionService {
   constructor(
     private readonly prisma: PrismaService, private readonly pricing: PricingService, private readonly inventory: InventoryService,
     private readonly audit: AuditService, private readonly events: DomainEvents, private readonly settings: SettingsService,
-    private readonly farms: FarmService,
+    private readonly farms: FarmService, private readonly reference: ReferenceService,
   ) {}
 
   async create(user: AuthUser, dto: CreateProductionDto, meta: RequestMeta): Promise<{ record: ReturnType<typeof presentProduction>; created: boolean }> {
@@ -56,16 +57,16 @@ export class ProductionService {
       }
     }
 
+    // Reference data is read BEFORE the transaction (and from memory when possible): everything done inside a transaction costs a
+    // database round trip while holding locks, so the transaction contains only what must be atomic.
+    const [units, coop, shift] = await Promise.all([this.pricing.unitsFor(), this.reference.activeCoop(farmId, dto.coopId), this.reference.shift(dto.shift)]);
+    if (!coop) throw new BadRequestException('Unknown or inactive coop.');
+    if (!shift || !shift.active) throw new BadRequestException('Unknown shift.');
+    const { entries, total } = this.convert(dto.entries, units, max);
+
     let result: Row;
     try {
       result = await this.prisma.$transaction(async (tx) => {
-        const units = await this.pricing.unitsFor(tx);
-        const coop = await tx.coop.findFirst({ where: { id: dto.coopId, farmId, active: true, deletedAt: null } });
-        if (!coop) throw new BadRequestException('Unknown or inactive coop.');
-        const shift = await tx.shift.findUnique({ where: { code: dto.shift } });
-        if (!shift || !shift.active) throw new BadRequestException('Unknown shift.');
-        const { entries, total } = this.convert(dto.entries, units, max);
-
         const dup = await tx.productionRecord.findFirst({ where: { coopId: coop.id, shiftId: shift.id, productionDate: toDbDate(date), status: 'ACTIVE' } });
         if (dup) throw new ConflictException('Production for this coop, date and shift is already recorded. Use a correction instead.');
 

@@ -1,5 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { TtlCache } from '../../common/cache';
+import { DomainEvents } from '../../domain/events.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthUser } from '../auth.types';
 import { IS_PUBLIC } from '../decorators/public.decorator';
@@ -9,7 +11,16 @@ const UNAUTHENTICATED = 'Your session is invalid or has expired. Please sign in 
 
 @Injectable()
 export class AuthenticationService {
-  constructor(private readonly tokens: TokenService, private readonly prisma: PrismaService) {}
+  /**
+   * The live state of a signed-in user (account status, roles, permissions, session family), kept for 10 s per token. Without this every
+   * request costs two database round trips before it does any work. The cache is emptied the moment anything that could change the answer
+   * happens (session revoked, user disabled, roles/permissions changed); a bumped token version changes the key by itself.
+   */
+  private readonly live = new TtlCache<AuthUser>(10_000);
+
+  constructor(private readonly tokens: TokenService, private readonly prisma: PrismaService, events: DomainEvents) {
+    for (const name of ['session.revoked', 'user.status_changed', 'access.changed'] as const) events.on(name, () => this.live.clear());
+  }
 
   /** Validates the short-lived token issued to privileged roles that must enrol in MFA before receiving a session. */
   async authenticateSetupToken(token: string): Promise<{ id: string; email: string }> {
@@ -32,20 +43,19 @@ export class AuthenticationService {
 
   /** Re-checks live server state for an already-verified token (used per HTTP request and periodically for WebSockets). */
   async revalidate(userId: string, familyId: string, tokenVersion: number): Promise<AuthUser> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        profile: true,
-        roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } },
-      },
-    });
-    if (!user || user.deletedAt || user.status !== 'ACTIVE' || user.tokenVersion !== tokenVersion) {
-      throw new UnauthorizedException(UNAUTHENTICATED);
-    }
-    const activeFamily = await this.prisma.session.findFirst({
-      where: { familyId, userId: user.id, revokedAt: null, expiresAt: { gt: new Date() } },
-      select: { id: true },
-    });
+    return this.live.get(`${userId}:${familyId}:${tokenVersion}`, () => this.loadLive(userId, familyId, tokenVersion));
+  }
+
+  private async loadLive(userId: string, familyId: string, tokenVersion: number): Promise<AuthUser> {
+    // The two checks are independent, so they run at the same time (one round trip instead of two).
+    const [user, activeFamily] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { profile: true, roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } } },
+      }),
+      this.prisma.session.findFirst({ where: { familyId, userId, revokedAt: null, expiresAt: { gt: new Date() } }, select: { id: true } }),
+    ]);
+    if (!user || user.deletedAt || user.status !== 'ACTIVE' || user.tokenVersion !== tokenVersion) throw new UnauthorizedException(UNAUTHENTICATED);
     if (!activeFamily) throw new UnauthorizedException(UNAUTHENTICATED);
     // Session rows are rotated on refresh; the *family* is what a logout/revocation kills.
     return {

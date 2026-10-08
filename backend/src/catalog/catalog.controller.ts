@@ -8,6 +8,7 @@ import { CurrentUser, Meta } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { FarmService } from '../domain/farm.service';
 import { PricingService } from '../domain/pricing.service';
+import { ReferenceService } from '../domain/reference.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
@@ -39,7 +40,7 @@ const COOP_SELECT = { id: true, name: true, active: true, capacity: true, notes:
 export class CatalogController {
   constructor(
     private readonly prisma: PrismaService, private readonly farms: FarmService,
-    private readonly pricing: PricingService, private readonly audit: AuditService,
+    private readonly pricing: PricingService, private readonly audit: AuditService, private readonly reference: ReferenceService,
   ) {}
 
   @RequirePermissions('production.read') @Get('coops')
@@ -54,6 +55,7 @@ export class CatalogController {
     const taken = await this.prisma.coop.findFirst({ where: { farmId, name: { equals: dto.name, mode: 'insensitive' }, deletedAt: null }, select: { id: true } });
     if (taken) throw new ConflictException('A coop with that name already exists.');
     const coop = await this.prisma.coop.create({ data: { farmId, name: dto.name, capacity: dto.capacity, notes: dto.notes || undefined }, select: COOP_SELECT });
+    this.reference.coopsChanged();
     await this.audit.record({ action: 'coop.created', userId: user.id, userName: user.fullName, entityType: 'coop', entityId: coop.id, after: coop, ip: meta.ip, requestId: meta.requestId });
     return coop;
   }
@@ -67,6 +69,7 @@ export class CatalogController {
       if (taken) throw new ConflictException('A coop with that name already exists.');
     }
     const after = await this.prisma.coop.update({ where: { id }, data: { ...dto, ...(dto.notes === '' ? { notes: null } : {}) }, select: COOP_SELECT });
+    this.reference.coopsChanged();
     await this.audit.record({ action: 'coop.updated', userId: user.id, userName: user.fullName, entityType: 'coop', entityId: id, before, after, ip: meta.ip, requestId: meta.requestId });
     return after;
   }
