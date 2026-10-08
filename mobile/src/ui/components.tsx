@@ -119,6 +119,9 @@ export function Button({ title, onPress, variant = 'primary', busy, disabled, sm
  * Labelled input. The label is always visible (never only a placeholder), the error appears directly under the field with an icon
  * (not colour alone), password fields get a show/hide control, and focus is clearly outlined.
  */
+/** Text style for single-line inputs: no line height or padding, so the typed text sits in the vertical centre instead of dropping to the bottom. */
+const inputText = { fontSize: typeScale.body.fontSize, fontWeight: typeScale.body.fontWeight, lineHeight: undefined, paddingVertical: 0, textAlignVertical: 'center', includeFontPadding: false } as const;
+
 export function Field({ label, error, hint, icon, inputRef, pill, onFocus, onBlur, ...input }: TextInputProps & { label: string; error?: string | null; hint?: string; icon?: IconName; inputRef?: Ref<TextInput>; pill?: boolean }) {
   const c = useColors();
   const [focused, setFocused] = useState(false);
@@ -138,7 +141,7 @@ export function Field({ label, error, hint, icon, inputRef, pill, onFocus, onBlu
         <TextInput
           {...input} ref={inputRef} accessibilityLabel={label} placeholderTextColor={c.muted} cursorColor={c.primary} selectionColor={c.primary}
           onFocus={(e) => { setFocused(true); onFocus?.(e); }} onBlur={(e) => { setFocused(false); onBlur?.(e); }}
-          style={[typeScale.body, { flex: 1, color: c.text, paddingVertical: space.md }, input.style]} secureTextEntry={isPassword && !reveal}
+          style={[inputText, input.multiline ? { paddingVertical: space.md, minHeight: 96, textAlignVertical: 'top' } : { height: TOUCH + 4 }, { flex: 1, color: c.text }, input.style]} secureTextEntry={isPassword && !reveal}
         />
         {isPassword ? (
           <Pressable accessibilityRole="button" accessibilityLabel={reveal ? 'Hide password' : 'Show password'} hitSlop={12} onPress={() => setReveal((v) => !v)} style={{ padding: space.xs }}>
@@ -162,7 +165,7 @@ export function SearchBar({ value, onChangeText, placeholder = 'Search' }: { val
       <Icon name="search" size="sm" color={c.muted} />
       <TextInput
         accessibilityLabel={placeholder} value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={c.muted} autoCorrect={false} autoCapitalize="none"
-        returnKeyType="search" style={[typeScale.body, { flex: 1, color: c.text, paddingVertical: space.sm }]}
+        returnKeyType="search" style={[inputText, { flex: 1, height: TOUCH - 4, color: c.text }]}
       />
       {value ? <Pressable accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={12} onPress={() => onChangeText('')}><Icon name="close-circle" size="md" color={c.muted} /></Pressable> : null}
     </View>
@@ -216,7 +219,7 @@ export function Stepper({ label, value, onChange, max = 100000 }: { label: strin
         <Pressable accessibilityRole="button" accessibilityLabel={`Decrease ${label}`} onPress={() => set(value - 1)} style={round}><Icon name="remove" size="md" color={c.onPrimarySoft} /></Pressable>
         <TextInput
           accessibilityLabel={label} keyboardType="number-pad" value={String(value)} onChangeText={(t) => set(Number(t.replace(/\D/g, '')))} selectTextOnFocus
-          style={[typeScale.title, { flex: 1, minHeight: TOUCH + 4, textAlign: 'center', color: c.text, borderWidth: 1, borderColor: c.borderStrong, borderRadius: radius.md, backgroundColor: c.input }]}
+          style={[inputText, { fontSize: typeScale.title.fontSize, fontWeight: typeScale.title.fontWeight, flex: 1, height: TOUCH + 4, textAlign: 'center', color: c.text, borderWidth: 1, borderColor: c.borderStrong, borderRadius: radius.md, backgroundColor: c.input }]}
         />
         <Pressable accessibilityRole="button" accessibilityLabel={`Increase ${label}`} onPress={() => set(value + 1)} style={round}><Icon name="add" size="md" color={c.onPrimarySoft} /></Pressable>
       </Row>
