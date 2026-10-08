@@ -24,9 +24,16 @@ export function PrivacyShield() {
     const sub = AppState.addEventListener('change', (s) => setCovered(s === 'inactive' || s === 'background'));
     return () => sub.remove();
   }, []);
+  // System sheets (photo picker, permission prompts, Face ID) make iOS report "inactive" and a missed "active" event must never leave the
+  // cover stuck on screen, so while covered the real state is re-checked every second.
+  useEffect(() => {
+    if (!covered) return;
+    const t = setInterval(() => { if (AppState.currentState === 'active') setCovered(false); }, 1000);
+    return () => clearInterval(t);
+  }, [covered]);
   if (!covered) return null;
   return (
-    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[StyleSheet.absoluteFill, { backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', gap: 12, zIndex: 2000, elevation: 2000 }]}>
+    <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[StyleSheet.absoluteFill, { backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', gap: 12, zIndex: 2000, elevation: 2000 }]}>
       <Icon name="egg" size={64} color={c.accent} />
       <Text variant="title" color={c.onPrimary}>Makarifor</Text>
     </View>
