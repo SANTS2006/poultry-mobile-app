@@ -25,6 +25,8 @@ export function createEndpoints(api: ApiClient) {
     dashboard: () => get<Dashboard>('/dashboard'),
 
     coops: () => get<Coop[]>('/coops'),
+    createCoop: (body: { name: string; capacity?: number; notes?: string }) => post<Coop>('/coops', body),
+    updateCoop: (id: string, body: { name?: string; active?: boolean; capacity?: number | null; notes?: string | null }) => patch<Coop>(`/coops/${id}`, body),
     units: () => get<UnitInfo[]>('/units'),
     prices: () => get<PriceRow[]>('/prices'),
     setPrice: (unit: Unit, amount: string, reason: string) => post('/prices', { unit, amount, reason }),
@@ -103,8 +105,8 @@ export function createEndpoints(api: ApiClient) {
     admin: {
       users: (p: Params) => get<Page<AdminUser>>('/users', p),
       user: (id: string) => get<AdminUser>(`/users/${id}`),
-      invite: (body: { email: string; fullName: string; phone?: string; roleCodes: string[] }) => post('/users/invite', body),
-      resendInvite: (id: string) => post(`/users/${id}/resend-invite`),
+      invite: (body: { email: string; fullName: string; phone?: string; roleCodes: string[] }) => post<AdminUser & { emailSent: boolean }>('/users/invite', body),
+      resendInvite: (id: string) => post<{ emailSent: boolean }>(`/users/${id}/resend-invite`),
       setRoles: (id: string, roleCodes: string[], reason: string) => put<AdminUser>(`/users/${id}/roles`, { roleCodes, reason }),
       disable: (id: string, reason: string) => post<AdminUser>(`/users/${id}/disable`, { reason }),
       reactivate: (id: string, reason: string) => post<AdminUser>(`/users/${id}/reactivate`, { reason }),

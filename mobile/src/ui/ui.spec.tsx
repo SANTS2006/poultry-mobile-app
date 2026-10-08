@@ -1,11 +1,18 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { useAppStore } from '../state/store';
 import { Avatar, Button, Segmented, Stepper } from './components';
-import { NotificationBell, unreadLabel } from './header-actions';
+import { NotificationBell, ProfileButton, unreadLabel } from './header-actions';
+import { SummaryStrip } from './summary-strip';
 import { ReasonModal } from './reason-modal';
 import { StatusBanners } from './status-banners';
 
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
+const mockPush = jest.fn();
+const mockSignOut = jest.fn();
+const mockSetMode = jest.fn();
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 24, bottom: 0, left: 0, right: 0 }) }));
+jest.mock('../state/sign-out', () => ({ useSignOut: () => ({ signOut: mockSignOut, busy: false }) }));
+jest.mock('../state/use-theme-mode', () => ({ useThemeMode: () => ({ mode: 'light', setMode: mockSetMode }) }));
 let mockUnread = 0;
 jest.mock('../queries/hooks', () => ({ useUnreadCount: () => ({ data: { unread: mockUnread } }) }));
 
@@ -189,5 +196,67 @@ describe('Avatar', () => {
     const img = withPic.root.findAll((n) => typeof n.props.onError === 'function')[0];
     act(() => { img.props.onError(); });
     expect(texts(withPic)).toBe('AL');
+  });
+});
+
+
+describe('Field focus', () => {
+  const { Field } = require('./components') as typeof import('./components'); // eslint-disable-line @typescript-eslint/no-require-imports
+  it('keeps the very same text input (no remount) and the same layout when focused, blurred and typed into, and calls the caller’s handlers', () => {
+    const onFocus = jest.fn(); const onBlur = jest.fn(); const onChangeText = jest.fn();
+    const r = render(<Field label="Email" value="" onChangeText={onChangeText} onFocus={onFocus} onBlur={onBlur} />);
+    const input = () => r.root.findByProps({ accessibilityLabel: 'Email' });
+    const first = input().instance ?? input();
+    const borderWidth = () => r.root.findAll((n) => n.props.style && [n.props.style].flat(5).some((x: { borderWidth?: number } | null) => x && typeof x === 'object' && x.borderWidth !== undefined))[0];
+    const before = JSON.stringify([borderWidth().props.style].flat(5).filter(Boolean).map((x: { borderWidth?: number }) => x.borderWidth));
+    act(() => { input().props.onFocus({}); });
+    expect(onFocus).toHaveBeenCalledTimes(1);
+    act(() => { input().props.onChangeText('a'); });
+    expect(onChangeText).toHaveBeenCalledWith('a');
+    expect(JSON.stringify([borderWidth().props.style].flat(5).filter(Boolean).map((x: { borderWidth?: number }) => x.borderWidth))).toBe(before); // nothing moves on focus
+    act(() => { input().props.onBlur({}); });
+    expect(onBlur).toHaveBeenCalledTimes(1);
+    expect(input().instance ?? input()).toBe(first);
+  });
+});
+
+
+describe('ProfileButton menu', () => {
+  const press = (r: ReactTestRenderer, label: string) => { act(() => { r.root.findAll((n) => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function')[0].props.onPress(); }); };
+  const open = () => {
+    act(() => { useAppStore.setState({ user: { id: 'u1', email: 'ada@farm.com', fullName: 'Ada Lovelace', mfaEnabled: false, roles: ['SALES_STAFF'], permissions: [] } }); });
+    const r = render(<ProfileButton />);
+    expect(texts(r)).not.toContain('Log out'); // closed until tapped
+    press(r, 'Your profile menu');
+    return r;
+  };
+  beforeEach(() => { mockPush.mockClear(); mockSignOut.mockClear(); mockSetMode.mockClear(); });
+
+  it('shows who is signed in with Settings, theme and Log out', () => {
+    const t = texts(open());
+    for (const needle of ['Ada Lovelace', 'ada@farm.com', 'Sales staff', 'Settings', 'Dark mode', 'Log out']) expect(t).toContain(needle);
+  });
+  it('Settings opens the settings page and closes the menu', () => {
+    const r = open();
+    press(r, 'Settings');
+    expect(mockPush).toHaveBeenCalledWith('/settings');
+    expect(texts(r)).not.toContain('Log out');
+  });
+  it('Log out signs the user out', () => {
+    const r = open();
+    press(r, 'Log out');
+    expect(mockSignOut).toHaveBeenCalledTimes(1);
+  });
+  it('the theme item switches to dark', () => {
+    const r = open();
+    press(r, 'Dark mode');
+    expect(mockSetMode).toHaveBeenCalledWith('dark');
+  });
+});
+
+describe('SummaryStrip', () => {
+  it('shows each label with its figure', () => {
+    const t = texts(render(<SummaryStrip items={[{ label: 'Today', value: '120' }, { label: 'This month', value: '3,400' }]} />));
+    for (const needle of ['Today', '120', 'This month', '3,400']) expect(t).toContain(needle);
   });
 });

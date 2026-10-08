@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Modal, Pressable, View } from 'react-native';
+import { minLength, required, useForm } from '../lib/validation';
 import { Button, Field, Row, Text } from './components';
 import { radius, space, useColors } from './theme';
 
@@ -25,14 +26,15 @@ export function ReasonModal(props: Props) {
 
 function ReasonBody({ title, message, confirmLabel = 'Confirm', danger, onCancel, onConfirm }: Props) {
   const c = useColors();
-  const [reason, setReason] = useState('');
+  const form = useForm({ reason: '' }, { reason: [required('Please give a reason.'), minLength(5, 'Please explain in at least 5 characters.')] });
   const [busy, setBusy] = useState(false);
+  const reason = form.values.reason;
   const ok = reason.trim().length >= 5;
   return (
     <Pressable style={{ backgroundColor: c.card, borderRadius: radius.lg, padding: space.lg, gap: space.md }} onPress={() => undefined}>
       <Text size="title" bold accessibilityRole="header">{title}</Text>
       {message ? <Text muted>{message}</Text> : null}
-      <Field label="Reason (at least 5 characters)" value={reason} onChangeText={setReason} maxLength={300} autoFocus />
+      <Field label="Reason (at least 5 characters)" {...form.field('reason')} maxLength={300} autoFocus />
       <View style={{ gap: space.sm }}>
         <Row style={{ justifyContent: 'flex-end' }}>
           <Button title="Cancel" variant="ghost" onPress={onCancel} />

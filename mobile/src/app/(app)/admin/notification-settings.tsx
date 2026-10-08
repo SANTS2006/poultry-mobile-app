@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Alert, Switch } from 'react-native';
 import { describeError } from '../../../lib/errors';
-import { isMoneyInput } from '../../../lib/format';
+import { money, required, useForm, type Rule } from '../../../lib/validation';
 import { useEndpoints } from '../../../state/app';
 import { Button, ErrorView, Field, ListRow, Loading, Screen, SectionTitle, Text } from '../../../ui/components';
 import { useColors } from '../../../ui/theme';
@@ -28,16 +28,19 @@ function RulesForm({ initial }: { initial: Config }) {
   const c = useColors();
   const toast = useToast();
   const [summaryOn, setSummaryOn] = useState(Boolean(initial.dailySummaryEnabled));
-  const [summaryTime, setSummaryTime] = useState(String(initial.dailySummaryTime ?? '18:00'));
-  const [large, setLarge] = useState(initial.largeSaleThreshold ? String(initial.largeSaleThreshold) : '');
-  const [monthly, setMonthly] = useState(initial.monthlyExpenseThreshold ? String(initial.monthlyExpenseThreshold) : '');
+  const time24: Rule = (v) => (!v.trim() || HM.test(v.trim()) ? null : 'Use 24-hour time like 18:00.');
+  const form = useForm(
+    { summaryTime: String(initial.dailySummaryTime ?? '18:00'), large: initial.largeSaleThreshold ? String(initial.largeSaleThreshold) : '', monthly: initial.monthlyExpenseThreshold ? String(initial.monthlyExpenseThreshold) : '' },
+    { summaryTime: [required('Enter a time like 18:00.'), time24], large: [money('threshold')], monthly: [money('threshold')] },
+  );
+  const { summaryTime, large, monthly } = form.values;
   const [reminders, setReminders] = useState<Reminder[]>((initial.productionReminders as Reminder[] | undefined) ?? []);
   const [busy, setBusy] = useState(false);
 
   async function save() {
-    if (!HM.test(summaryTime)) return Alert.alert('Check the time', 'Use 24-hour time like 18:00.');
-    if (reminders.some((r) => !HM.test(r.time))) return Alert.alert('Check the reminder times', 'Use 24-hour time like 10:00.');
-    if ((large && !isMoneyInput(large)) || (monthly && !isMoneyInput(monthly))) return Alert.alert('Check the thresholds', 'Use numbers only, or leave empty to switch off.');
+    const ok = form.submit();
+    if (reminders.some((r) => !HM.test(r.time))) { Alert.alert('Check the reminder times', 'Use 24-hour time like 10:00.'); return; }
+    if (!ok) return;
     setBusy(true);
     try {
       await api.notifications.setConfig({
@@ -52,15 +55,15 @@ function RulesForm({ initial }: { initial: Config }) {
   return (
     <Screen>
       <ListRow title="Daily summary" subtitle="A short end-of-day notification for people who can see the dashboard" right={<Switch value={summaryOn} onValueChange={setSummaryOn} trackColor={{ true: c.primary }} accessibilityLabel="Daily summary" />} />
-      <Field label="Summary time (24-hour, business time zone)" value={summaryTime} onChangeText={setSummaryTime} keyboardType="numbers-and-punctuation" />
+      <Field label="Summary time (24-hour, business time zone)" icon="time-outline" {...form.field('summaryTime')} keyboardType="numbers-and-punctuation" />
       <SectionTitle>Production reminders</SectionTitle>
       <Text muted>Sent to production staff only if a coop still has no record for that shift.</Text>
       {reminders.map((r, i) => (
-        <Field key={r.shift} label={`${r.shift.toLowerCase()} reminder`} value={r.time} onChangeText={(t) => setReminders(reminders.map((x, j) => (j === i ? { ...x, time: t } : x)))} keyboardType="numbers-and-punctuation" />
+        <Field key={r.shift} label={`${r.shift.toLowerCase()} reminder`} icon="alarm-outline" value={r.time} onChangeText={(t) => setReminders(reminders.map((x, j) => (j === i ? { ...x, time: t } : x)))} error={r.time && !HM.test(r.time) ? 'Use 24-hour time like 10:00.' : null} keyboardType="numbers-and-punctuation" />
       ))}
       <SectionTitle>Alerts for the owner</SectionTitle>
-      <Field label="Large sale threshold" value={large} onChangeText={setLarge} keyboardType="decimal-pad" hint="Empty = off" />
-      <Field label="Monthly expense threshold" value={monthly} onChangeText={setMonthly} keyboardType="decimal-pad" hint="Empty = off" />
+      <Field label="Large sale threshold" icon="cash-outline" {...form.field('large')} keyboardType="decimal-pad" hint="Empty = off" />
+      <Field label="Monthly expense threshold" icon="cash-outline" {...form.field('monthly')} keyboardType="decimal-pad" hint="Empty = off" />
       <Button title="Save" onPress={() => void save()} busy={busy} />
     </Screen>
   );

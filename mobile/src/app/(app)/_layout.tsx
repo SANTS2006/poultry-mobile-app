@@ -41,6 +41,8 @@ export default function AppLayout() {
       <Stack.Screen name="admin/user/[id]" options={{ title: 'User' }} />
       <Stack.Screen name="admin/invite" options={{ title: 'Invite user' }} />
       <Stack.Screen name="admin/audit" options={{ title: 'Audit log' }} />
+      <Stack.Screen name="admin/coops" options={{ title: 'Coops' }} />
+      <Stack.Screen name="admin/coop" options={{ title: 'Coop' }} />
       <Stack.Screen name="admin/prices" options={{ title: 'Prices' }} />
       <Stack.Screen name="admin/notification-settings" options={{ title: 'Notification rules' }} />
     </Stack>

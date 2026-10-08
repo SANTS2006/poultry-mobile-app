@@ -49,6 +49,8 @@ export interface RealtimeDeps {
   /** the server ended this session for good (revoked / disabled): the app must sign out */
   onSessionEnded: () => void;
   onStatus?: (s: 'connected' | 'disconnected') => void;
+  /** a notification was just created for this user (the app shows a small in-app banner) */
+  onNotification?: () => void;
 }
 
 /**
@@ -80,7 +82,12 @@ export class RealtimeClient {
       this.d.onSessionEnded();
     });
     s.on('subscription.revoked', () => undefined); // permissions changed: the topic simply stops arriving
-    for (const e of REALTIME_EVENTS) s.on(e, () => this.d.onInvalidate(invalidationsFor(e)));
+    for (const e of REALTIME_EVENTS) {
+      s.on(e, () => {
+        this.d.onInvalidate(invalidationsFor(e));
+        if (e === 'notification.created') this.d.onNotification?.();
+      });
+    }
   }
 
   stop(): void {

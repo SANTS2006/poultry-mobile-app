@@ -33,7 +33,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(() => ({ show }), [show]);
   const bg = t?.kind === 'error' ? c.danger : t?.kind === 'info' ? c.text : c.primary;
-  const fg = t?.kind === 'info' ? c.bg : t?.kind === 'error' ? '#FFFFFF' : c.onPrimary;
+  const fg = t?.kind === 'info' ? c.bg : t?.kind === 'error' ? c.onDanger : c.onPrimary;
   return (
     <Ctx.Provider value={value}>
       {children}
@@ -41,7 +41,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         <Animated.View pointerEvents="box-none" style={{ position: 'absolute', left: space.lg, right: space.lg, bottom: insets.bottom + 72, opacity: anim, transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
           <Pressable accessibilityRole="alert" onPress={hide}>
             <View style={[{ flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: bg, borderRadius: radius.md, paddingVertical: space.md, paddingHorizontal: space.lg }, elevation.float]}>
-              <Icon name={t.kind === 'error' ? 'alert-circle' : 'checkmark-circle'} size="md" color={fg} />
+              <Icon name={t.kind === 'error' ? 'alert-circle' : t.kind === 'info' ? 'notifications' : 'checkmark-circle'} size="md" color={fg} />
               <Text variant="bodyStrong" color={fg} style={{ flex: 1 }}>{t.message}</Text>
             </View>
           </Pressable>

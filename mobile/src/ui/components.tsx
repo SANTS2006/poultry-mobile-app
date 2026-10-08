@@ -42,14 +42,14 @@ export function Screen({ children, scroll = true, refreshing, onRefresh, padded 
   const body = scroll ? (
     <ScrollView
       contentContainerStyle={{ padding: padded ? space.lg : 0, gap: space.lg, paddingBottom: space.xxxl + space.xl }} keyboardShouldPersistTaps="handled"
-      keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} automaticallyAdjustKeyboardInsets
+      keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
       refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={c.primary} colors={[c.primary]} /> : undefined}
     >{children}</ScrollView>
   ) : <View style={{ flex: 1, padding: padded ? space.lg : 0, gap: space.lg }}>{children}</View>;
   return (
     <SafeAreaView edges={['left', 'right', 'bottom']} style={{ flex: 1, backgroundColor: c.bg }}>
       <StatusBanners />
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>{body}{footer}</KeyboardAvoidingView>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">{body}{footer}</KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -113,25 +113,26 @@ export function Button({ title, onPress, variant = 'primary', busy, disabled, sm
  * Labelled input. The label is always visible (never only a placeholder), the error appears directly under the field with an icon
  * (not colour alone), password fields get a show/hide control, and focus is clearly outlined.
  */
-export function Field({ label, error, hint, icon, inputRef, pill, ...input }: TextInputProps & { label: string; error?: string | null; hint?: string; icon?: IconName; inputRef?: Ref<TextInput>; pill?: boolean }) {
+export function Field({ label, error, hint, icon, inputRef, pill, onFocus, onBlur, ...input }: TextInputProps & { label: string; error?: string | null; hint?: string; icon?: IconName; inputRef?: Ref<TextInput>; pill?: boolean }) {
   const c = useColors();
   const [focused, setFocused] = useState(false);
   const [reveal, setReveal] = useState(false);
   const isPassword = !!input.secureTextEntry;
   const border = error ? c.danger : focused ? c.primary : c.borderStrong;
+  // The border is always 2 px wide (only its colour changes) so focusing a field never moves anything on screen: a layout shift under the
+  // user's finger can make the scroll view treat a tap as a drag and close the keyboard.
   return (
     <View style={{ gap: space.xs }}>
       <Text variant="label">{label}</Text>
-      <View style={[{
-        minHeight: TOUCH + 8, flexDirection: 'row', alignItems: 'center', borderWidth: focused || error ? 2 : 1, borderColor: border, borderRadius: pill ? radius.pill : radius.md,
-        backgroundColor: focused ? c.input : c.surface, paddingHorizontal: pill ? space.lg : space.md, gap: space.sm,
-      }, focused ? { shadowColor: c.primary, shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 } : null]}>
+      <View style={{
+        minHeight: TOUCH + 8, flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderColor: border, borderRadius: pill ? radius.pill : radius.md,
+        backgroundColor: c.input, paddingHorizontal: pill ? space.lg : space.md, gap: space.sm,
+      }}>
         {icon ? <Icon name={icon} size="sm" color={focused ? c.primary : c.muted} /> : null}
         <TextInput
-          ref={inputRef} accessibilityLabel={label} placeholderTextColor={c.muted} cursorColor={c.primary} selectionColor={c.primary}
-          onFocus={(e) => { setFocused(true); input.onFocus?.(e); }} onBlur={(e) => { setFocused(false); input.onBlur?.(e); }}
-          style={[typeScale.body, { flex: 1, color: c.text, paddingVertical: space.md }]}
-          {...input} secureTextEntry={isPassword && !reveal}
+          {...input} ref={inputRef} accessibilityLabel={label} placeholderTextColor={c.muted} cursorColor={c.primary} selectionColor={c.primary}
+          onFocus={(e) => { setFocused(true); onFocus?.(e); }} onBlur={(e) => { setFocused(false); onBlur?.(e); }}
+          style={[typeScale.body, { flex: 1, color: c.text, paddingVertical: space.md }, input.style]} secureTextEntry={isPassword && !reveal}
         />
         {isPassword ? (
           <Pressable accessibilityRole="button" accessibilityLabel={reveal ? 'Hide password' : 'Show password'} hitSlop={12} onPress={() => setReveal((v) => !v)} style={{ padding: space.xs }}>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 import { describeError } from '../../../lib/errors';
+import { fullName, required, useForm } from '../../../lib/validation';
 import { pickAvatar } from '../../../lib/avatar';
 import { useApp, useEndpoints } from '../../../state/app';
 import { useAppStore } from '../../../state/store';
@@ -16,9 +17,8 @@ export default function EditProfile() {
   const c = useColors();
   const toast = useToast();
   const user = useAppStore((s) => s.user);
-  const [name, setName] = useState(user?.fullName ?? '');
+  const form = useForm({ name: user?.fullName ?? '' }, { name: [required('Enter your name.'), fullName] });
   const [busy, setBusy] = useState<'photo' | 'name' | null>(null);
-  const [nameError, setNameError] = useState<string | null>(null);
 
   async function savePhoto(source: 'library' | 'camera') {
     const r = await pickAvatar(source);
@@ -47,10 +47,9 @@ export default function EditProfile() {
   }
 
   async function saveName() {
-    const v = name.trim();
-    if (v.length < 2) return setNameError('Enter your name (at least 2 letters).');
-    if (v === user?.fullName) return setNameError('That is already your name.');
-    setNameError(null);
+    if (!form.submit()) return;
+    const v = form.values.name.trim();
+    if (v === user?.fullName) return;
     await run('name', () => api.account.updateProfile({ fullName: v }), 'Name updated');
   }
 
@@ -67,8 +66,8 @@ export default function EditProfile() {
       </View>
 
       <Card style={{ gap: space.lg }}>
-        <Field label="Full name" icon="person-outline" value={name} onChangeText={(t) => { setName(t); setNameError(null); }} error={nameError} autoCapitalize="words" textContentType="name" autoComplete="name" maxLength={100} returnKeyType="done" onSubmitEditing={() => void saveName()} />
-        <Button title="Save name" onPress={() => void saveName()} busy={busy === 'name'} disabled={name.trim() === user?.fullName} />
+        <Field label="Full name" icon="person-outline" {...form.field('name')} autoCapitalize="words" textContentType="name" autoComplete="name" maxLength={100} returnKeyType="done" onSubmitEditing={() => void saveName()} />
+        <Button title="Save name" onPress={() => void saveName()} busy={busy === 'name'} disabled={form.values.name.trim() === user?.fullName} />
       </Card>
 
       <Text variant="caption" muted style={{ textAlign: 'center' }}>Your name and photo are visible to administrators of this farm.</Text>

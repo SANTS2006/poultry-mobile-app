@@ -1,7 +1,8 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ProblemList } from '../../../features/ProblemList';
-import { formatMoney, isMoneyInput } from '../../../lib/format';
+import { formatMoney } from '../../../lib/format';
+import { maxLength, positiveMoney, required, useForm } from '../../../lib/validation';
 import { useRecord, useSavedToast } from '../../../queries/use-record';
 import { Button, Card, Field, Screen, Segmented, Text } from '../../../ui/components';
 
@@ -13,18 +14,17 @@ export default function NewPayment() {
   const router = useRouter();
   const rec = useRecord('payment.create');
   const saved = useSavedToast();
-  const [amount, setAmount] = useState(params.owed ?? '');
+  const form = useForm({ amount: params.owed ?? '', reference: '' }, { amount: [required('Enter the amount received.'), positiveMoney('amount')], reference: [maxLength(100)] });
   const [method, setMethod] = useState<(typeof METHODS)[number]['value']>('CASH');
-  const [reference, setReference] = useState('');
-  const [amountError, setAmountError] = useState<string | null>(null);
 
   async function save() {
-    if (!isMoneyInput(amount)) { setAmountError('Enter the amount using numbers only, for example 500 or 500.50.'); return; }
+    if (!form.submit()) return;
+    const { amount, reference } = form.values;
     const payload: Record<string, unknown> = { amount: amount.trim(), method, ...(reference.trim() ? { reference: reference.trim() } : {}) };
     if (params.saleId) payload.saleId = params.saleId; else if (params.customerId) payload.customerId = params.customerId;
     const result = await rec.submit(payload);
     if (result) {
-      saved(result, `Payment of ${formatMoney(amount)} recorded`);
+      saved(result, `Payment of ${formatMoney(form.values.amount)} recorded`);
       router.back();
     }
   }
@@ -36,9 +36,9 @@ export default function NewPayment() {
         {params.owed ? <Text muted>Still owed: {formatMoney(params.owed)}</Text> : null}
         {params.customerId ? <Text muted>The payment settles this customer&apos;s oldest unpaid sales first.</Text> : null}
       </Card>
-      <Field label="Amount received" icon="cash-outline" value={amount} onChangeText={(t) => { setAmount(t); setAmountError(null); }} error={amountError} keyboardType="decimal-pad" autoFocus />
+      <Field label="Amount received" icon="cash-outline" {...form.field('amount')} keyboardType="decimal-pad" />
       <Segmented label="Paid by" value={method} onChange={setMethod} options={METHODS.map((m) => ({ value: m.value, label: m.label }))} />
-      <Field label="Reference (optional)" value={reference} onChangeText={setReference} maxLength={100} hint="Mobile-money or bank reference" />
+      <Field label="Reference (optional)" {...form.field('reference')} maxLength={100} hint="Mobile-money or bank reference" />
       <ProblemList problems={rec.problems} error={rec.error} />
       <Button title="Record payment" onPress={() => void save()} busy={rec.busy} />
     </Screen>

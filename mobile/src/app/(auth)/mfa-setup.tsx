@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image, Linking, View } from 'react-native';
 import { describeError } from '../../lib/errors';
+import { digits, required, useForm } from '../../lib/validation';
 import { useApp } from '../../state/app';
 import { useAuthFlow } from '../../state/auth-flow';
 import { AuthHeader } from '../../ui/brand';
@@ -14,7 +15,7 @@ export default function MfaSetup() {
   const { services } = useApp();
   const flow = useAuthFlow();
   const [enrolment, setEnrolment] = useState<{ secret: string; otpauthUri: string; qrCodeDataUrl: string } | null>(null);
-  const [code, setCode] = useState('');
+  const form = useForm({ code: '' }, { code: [required('Enter the 6-digit code shown in your authenticator app.'), digits(6, 'The code is 6 digits, like 123456.')] });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,10 +28,10 @@ export default function MfaSetup() {
   async function confirm() {
     const t = flow.setupToken;
     if (!t) return;
-    if (!/^\d{6}$/.test(code.trim())) { setError('Enter the 6-digit code shown in your authenticator app.'); return; }
+    if (!form.submit()) return;
     setBusy(true); setError(null);
     try {
-      const { recoveryCodes } = await services.session.confirmMfaSetup(t, code.trim());
+      const { recoveryCodes } = await services.session.confirmMfaSetup(t, form.values.code.trim());
       // The session is already open at this point; the signed-in app shows the codes before anything else.
       flow.clear();
       useAuthFlow.getState().showRecoveryCodes(recoveryCodes);
@@ -57,7 +58,8 @@ export default function MfaSetup() {
           <Button title="Open in authenticator app" variant="secondary" onPress={() => void Linking.openURL(enrolment.otpauthUri).catch(() => undefined)} small />
         </View>
       ) : null}
-      <Field label="6-digit code" icon="keypad-outline" value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} autoComplete="one-time-code" error={enrolment ? error : null} />
+      <Field label="6-digit code" icon="keypad-outline" {...form.field('code')} keyboardType="number-pad" maxLength={6} autoComplete="one-time-code" />
+      {enrolment ? <InlineError message={error} /> : null}
       {!enrolment ? <InlineError message={error} /> : null}
       <Button title="Turn on and sign in" icon="checkmark" onPress={() => void confirm()} busy={busy} disabled={!enrolment} />
       <Button title="Cancel" variant="ghost" onPress={() => { flow.clear(); router.replace('/login'); }} />

@@ -11,7 +11,7 @@ class FakeSocket implements SocketLike {
   fire(e: string, ...a: unknown[]) { (this.handlers.get(e) ?? []).forEach((h) => h(...a)); }
 }
 
-function setup(permissions: string[] = ['sales.read', 'inventory.read', 'dashboard.read']) {
+function setup(permissions: string[] = ['sales.read', 'inventory.read', 'dashboard.read'], onNotification?: () => void) {
   const socket = new FakeSocket();
   let authFn: ((cb: (d: object) => void) => void) | undefined;
   const invalidated: string[][][] = [];
@@ -21,7 +21,7 @@ function setup(permissions: string[] = ['sales.read', 'inventory.read', 'dashboa
   const rt = new RealtimeClient({
     url: 'https://api',
     factory: (_u, o) => { authFn = o.auth; expect(o.transports).toEqual(['websocket']); expect(o.path).toBe('/realtime'); return socket; },
-    getToken: async () => token, permissions: () => permissions, onInvalidate: (k) => invalidated.push(k), onSessionEnded: () => { ended++; }, onStatus: (s) => status.push(s),
+    getToken: async () => token, permissions: () => permissions, onInvalidate: (k) => invalidated.push(k), onSessionEnded: () => { ended++; }, onStatus: (s) => status.push(s), onNotification,
   });
   return { rt, socket, invalidated, ended: () => ended, status, auth: () => new Promise<object>((r) => authFn!(r)), setToken: (t: string) => { token = t; } };
 }
@@ -92,5 +92,18 @@ describe('realtime client', () => {
     expect(s.socket.disconnected).toBe(true);
     expect(s.status.at(-1)).toBe('disconnected');
     expect(s.rt.connected).toBe(false);
+  });
+});
+
+describe('realtime client: notifications', () => {
+  it('refreshes the notification list and the bell count, and tells the app a new notification arrived', () => {
+    const seen: string[] = [];
+    const s = setup(['sales.read'], () => seen.push('notice'));
+    s.rt.start();
+    s.socket.fire('notification.created', { name: 'notification.created' });
+    expect(s.invalidated.at(-1)).toEqual([['notifications']]); // the unread query lives under ['notifications']
+    expect(seen).toEqual(['notice']);
+    s.socket.fire('sale.created');
+    expect(seen).toEqual(['notice']); // other events do not raise the banner
   });
 });

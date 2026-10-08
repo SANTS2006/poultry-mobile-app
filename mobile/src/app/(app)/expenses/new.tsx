@@ -5,6 +5,7 @@ import { addDays, formatDate, formatMoney, isMoneyInput } from '../../../lib/for
 import { fromCents, toCents } from '../../../lib/money';
 import { useReference } from '../../../queries/hooks';
 import { useRecord, useSavedToast } from '../../../queries/use-record';
+import { maxLength, minLength, positiveMoney, quantity as quantityRule, required, useForm } from '../../../lib/validation';
 import { Button, Card, Field, Loading, Row, Screen, Segmented, Text } from '../../../ui/components';
 
 const METHODS = [{ value: 'CASH', label: 'Cash' }, { value: 'MOBILE_MONEY', label: 'Mobile money' }, { value: 'BANK_TRANSFER', label: 'Bank' }, { value: 'OTHER', label: 'Other' }] as const;
@@ -15,15 +16,21 @@ export default function NewExpense() {
   const rec = useRecord('expense.create');
   const saved = useSavedToast();
   const [category, setCategory] = useState<string | null>(null);
-  const [description, setDescription] = useState('');
   const [byQty, setByQty] = useState(false);
-  const [total, setTotal] = useState('');
-  const [quantity, setQuantity] = useState('');
-  const [unitCost, setUnitCost] = useState('');
+  const form = useForm(
+    { description: '', total: '', quantity: '', unitCost: '', notes: '' },
+    {
+      description: [required('Say what the money was spent on.'), minLength(3, 'Add a few more words about what it was for.'), maxLength(300)],
+      total: byQty ? [] : [required('Enter the total amount.'), positiveMoney('total')],
+      quantity: byQty ? [required('Enter the quantity.'), quantityRule('quantity')] : [],
+      unitCost: byQty ? [required('Enter the price per unit.'), positiveMoney('price')] : [],
+      notes: [maxLength(500)],
+    },
+  );
+  const { description, total, quantity, unitCost, notes } = form.values;
   const [supplierId, setSupplierId] = useState<string | null>(null);
   const [method, setMethod] = useState<(typeof METHODS)[number]['value']>('CASH');
   const [daysBack, setDaysBack] = useState(0);
-  const [notes, setNotes] = useState('');
   const [catError, setCatError] = useState<string | null>(null);
 
   const categories = ref.data?.expenseCategories ?? [];
@@ -40,7 +47,9 @@ export default function NewExpense() {
   }, [byQty, quantity, unitCost]);
 
   async function save() {
+    const ok = form.submit();
     if (!category) { setCatError('Choose what kind of expense this is.'); return; }
+    if (!ok) return;
     const payload: Record<string, unknown> = {
       categoryCode: category, description: description.trim(), expenseDate: date, paymentMethod: method,
       ...(supplierId ? { supplierId } : {}), ...(notes.trim() ? { notes: notes.trim() } : {}),
@@ -57,15 +66,15 @@ export default function NewExpense() {
   return (
     <Screen>
       <Segmented label="Category" error={catError} value={category} onChange={(v) => { setCategory(v); setCatError(null); }} options={categories.map((c) => ({ value: c.code, label: c.name }))} />
-      <Field label="What was it for?" value={description} onChangeText={setDescription} maxLength={300} />
+      <Field label="What was it for?" icon="document-text-outline" {...form.field('description')} maxLength={300} />
       <Segmented value={byQty ? 'q' : 't'} onChange={(v) => setByQty(v === 'q')} options={[{ value: 't', label: 'Total amount' }, { value: 'q', label: 'Quantity × price' }]} />
       {byQty ? (
         <>
-          <Field label="Quantity" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" />
-          <Field label="Price per unit" value={unitCost} onChangeText={setUnitCost} keyboardType="decimal-pad" />
+          <Field label="Quantity" {...form.field('quantity')} keyboardType="decimal-pad" />
+          <Field label="Price per unit" icon="cash-outline" {...form.field('unitCost')} keyboardType="decimal-pad" />
           <Card tone="info"><Text muted>Total</Text><Text size="title" bold>{computed ? formatMoney(computed, ref.currency) : '—'}</Text></Card>
         </>
-      ) : <Field label="Total amount" value={total} onChangeText={setTotal} keyboardType="decimal-pad" />}
+      ) : <Field label="Total amount" icon="cash-outline" {...form.field('total')} keyboardType="decimal-pad" />}
       {suppliers.length ? <Segmented label="Supplier (optional)" value={supplierId} onChange={(v) => setSupplierId(supplierId === v ? null : v)} options={suppliers.map((s) => ({ value: s.id, label: s.name }))} /> : null}
       <Segmented label="Paid by" value={method} onChange={setMethod} options={METHODS.map((m) => ({ value: m.value, label: m.label }))} />
       <Row style={{ justifyContent: 'space-between' }}>
@@ -75,7 +84,7 @@ export default function NewExpense() {
           <Button title="Later" variant="secondary" small disabled={daysBack === 0} onPress={() => setDaysBack((d) => Math.max(0, d - 1))} />
         </Row>
       </Row>
-      <Field label="Notes (optional)" value={notes} onChangeText={setNotes} multiline maxLength={500} />
+      <Field label="Notes (optional)" {...form.field('notes')} multiline maxLength={500} />
       <ProblemList problems={rec.problems} error={rec.error} />
       <Button title="Save expense" onPress={() => void save()} busy={rec.busy} />
     </Screen>

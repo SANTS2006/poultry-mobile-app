@@ -2,15 +2,16 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { describeError } from '../../../lib/errors';
+import { email, required, useForm } from '../../../lib/validation';
 import { useApp, useEndpoints } from '../../../state/app';
 import { useAppStore } from '../../../state/store';
-import { Button, Card, Field, Screen, Text } from '../../../ui/components';
+import { Button, Card, Field, InlineError, Screen, SectionTitle, Text } from '../../../ui/components';
 import { space, useColors } from '../../../ui/theme';
 import { useToast } from '../../../ui/toast';
 
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-
-/** The sign-in address changes only after the link sent to the NEW address is used, so a typo can never lock you out. */
+/**
+ * The sign-in address changes only after the code e-mailed to the NEW address is entered here, so a typo can never lock you out.
+ */
 export default function ChangeEmail() {
   const api = useEndpoints();
   const { services } = useApp();
@@ -18,27 +19,38 @@ export default function ChangeEmail() {
   const toast = useToast();
   const c = useColors();
   const user = useAppStore((s) => s.user);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
+  const form = useForm(
+    { email: '', password: '' },
+    { email: [required('Enter the new email address.'), email, ], password: [required('Enter your current password to confirm.')] },
+  );
+  const code = useForm({ code: '' }, { code: [required('Paste the confirmation code from the email.')] });
+  const [busy, setBusy] = useState<'request' | 'confirm' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const pending = user?.pendingEmail ?? null;
 
-  async function save() {
-    const next = email.trim().toLowerCase();
-    const e: typeof errors = {};
-    if (!EMAIL_RE.test(next)) e.email = 'That doesn’t look like an email address.';
-    else if (next === user?.email) e.email = 'That is already your email address.';
-    if (!password) e.password = 'Enter your current password to confirm.';
-    setErrors(e);
-    if (e.email || e.password) return;
-    setBusy(true);
+  async function request() {
+    if (!form.submit()) return;
+    if (form.values.email.trim().toLowerCase() === user?.email) { setError('That is already your email address.'); return; }
+    setBusy('request'); setError(null);
     try {
-      await api.account.changeEmail(next, password);
+      await api.account.changeEmail(form.values.email.trim().toLowerCase(), form.values.password);
       await services.session.refreshProfile();
-      toast.show('Check your inbox to confirm');
+      form.reset();
+      toast.show('We emailed you a confirmation code');
+    } catch (err) { setError(describeError(err)); }
+    finally { setBusy(null); }
+  }
+
+  async function confirm() {
+    if (!code.submit()) return;
+    setBusy('confirm'); setError(null);
+    try {
+      await services.pub.post('/v1/auth/verify-email', { token: code.values.code.trim() });
+      await services.session.refreshProfile();
+      toast.show('Email address changed');
       router.back();
-    } catch (err) { setErrors({ form: describeError(err) }); }
-    finally { setBusy(false); }
+    } catch (err) { setError(describeError(err)); }
+    finally { setBusy(null); }
   }
 
   return (
@@ -46,13 +58,27 @@ export default function ChangeEmail() {
       <Card>
         <Text variant="caption" muted>Current sign-in address</Text>
         <Text variant="bodyStrong">{user?.email}</Text>
-        {user?.pendingEmail ? <Text variant="caption" color={c.warn}>Waiting for you to confirm {user.pendingEmail}. Open the link we emailed there.</Text> : null}
       </Card>
-      <Card tone="info"><Text>We email a confirmation link to the new address. Until you use it, you keep signing in with the current one.</Text></Card>
+
+      {pending ? (
+        <View style={{ gap: space.lg }}>
+          <Card tone="warn">
+            <Text variant="bodyStrong" color={c.warn}>Waiting for you to confirm {pending}</Text>
+            <Text>We emailed a confirmation code to that address. Until you enter it you keep signing in with {user?.email}.</Text>
+          </Card>
+          <Field label="Confirmation code" icon="key-outline" {...code.field('code')} autoCapitalize="none" autoCorrect={false} placeholder="Paste the code from the email" returnKeyType="done" onSubmitEditing={() => void confirm()} />
+          <InlineError message={error} />
+          <Button title="Confirm new email" icon="checkmark" onPress={() => void confirm()} busy={busy === 'confirm'} />
+          <SectionTitle>Wrong address?</SectionTitle>
+          <Text muted>Enter a different address below to start again.</Text>
+        </View>
+      ) : <Card tone="info"><Text>We email a confirmation code to the new address. Until you enter it, you keep signing in with the current one.</Text></Card>}
+
       <View style={{ gap: space.lg }}>
-        <Field label="New email address" icon="mail-outline" value={email} onChangeText={(t) => { setEmail(t); setErrors({}); }} error={errors.email} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="emailAddress" autoComplete="email" returnKeyType="next" />
-        <Field label="Current password" icon="lock-closed-outline" value={password} onChangeText={(t) => { setPassword(t); setErrors({}); }} error={errors.password ?? errors.form} secureTextEntry textContentType="password" returnKeyType="done" onSubmitEditing={() => void save()} />
-        <Button title="Send confirmation link" icon="paper-plane-outline" onPress={() => void save()} busy={busy} />
+        <Field label="New email address" icon="mail-outline" {...form.field('email')} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="emailAddress" autoComplete="email" returnKeyType="next" />
+        <Field label="Current password" icon="lock-closed-outline" {...form.field('password')} secureTextEntry textContentType="password" returnKeyType="done" onSubmitEditing={() => void request()} />
+        {!pending ? <InlineError message={error} /> : null}
+        <Button title={pending ? 'Send a new code' : 'Send confirmation code'} variant={pending ? 'secondary' : 'primary'} icon="paper-plane-outline" onPress={() => void request()} busy={busy === 'request'} />
       </View>
     </Screen>
   );

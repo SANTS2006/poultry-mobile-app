@@ -9,6 +9,7 @@ import { pendingCustomers, useRecord, useSavedToast } from '../../../queries/use
 import { useApp } from '../../../state/app';
 import { useCan } from '../../../state/store';
 import { estimateStockEggs } from '../../../sync';
+import { positiveMoney } from '../../../lib/validation';
 import { Button, Card, Field, InlineError, ListRow, Loading, Screen, Segmented, Stepper, Text } from '../../../ui/components';
 import { space } from '../../../ui/theme';
 
@@ -61,15 +62,17 @@ export default function NewSale() {
     return (ref.data?.customers ?? []).filter((c) => c.name.toLowerCase().includes(q) || (c.phone ?? '').includes(q)).slice(0, 6);
   }, [search, ref.data]);
 
+  const discountError = canDiscount && discount.trim() ? positiveMoney('discount')(discount, {}) : null;
+
   async function save() {
     const items = lines.filter((l) => l.quantity > 0).map((l) => ({ unit: l.unit, quantity: l.quantity }));
     const next = {
       items: items.length ? undefined : 'Enter how many cartons, crates or eggs to sell.',
       customer: pay !== 'FULL' && !customer ? 'Choose a registered customer to sell on credit or take a part payment.' : undefined,
-      paid: pay === 'PART' && !isMoneyInput(paidNow) ? 'Enter the amount paid now, for example 500 or 500.50.' : undefined,
+      paid: pay === 'PART' ? (!paidNow.trim() ? 'Enter the amount paid now.' : positiveMoney('amount paid')(paidNow, {}) ?? undefined) : undefined,
     };
     setErrs(next);
-    if (next.items || next.customer || next.paid) return;
+    if (next.items || next.customer || next.paid || discountError) return;
     const payload: Record<string, unknown> = { items, paymentMethod: method };
     if (customer?.id) payload.customerId = customer.id;
     if (customer?.clientId) payload.customerClientId = customer.clientId;
@@ -108,7 +111,7 @@ export default function NewSale() {
       <Stepper label={`Single eggs ${price('EGG') ? `· ${formatMoney(price('EGG'), cur)} each` : ''}`} value={eggs} onChange={setEggs} max={100000} />
       <InlineError message={errs.items} />
 
-      {canDiscount ? <Field label="Discount (optional)" value={discount} onChangeText={setDiscount} keyboardType="decimal-pad" hint="Managers only" /> : null}
+      {canDiscount ? <Field label="Discount (optional)" icon="pricetag-outline" value={discount} onChangeText={setDiscount} error={discountError} keyboardType="decimal-pad" hint="Managers only" /> : null}
 
       <Card tone="info">
         <Text muted>Estimated total</Text>

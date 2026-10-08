@@ -58,7 +58,8 @@ Alternative without an Expo account: install Android Studio + enable USB debuggi
 Password for all: `demo-password-tractor-2026`
 | Email | Role | Try |
 |---|---|---|
-| `owner@demo.local` | Owner | everything incl. admin, audit, reports export |
+| `superadmin@demo.local` | **Super Admin (demo)** | everything, including roles and security; can add coops and invite owners |
+| `owner@demo.local` | Owner | everything incl. admin, audit, reports export, adding coops |
 | `manager@demo.local` | Farm Manager | production, stock, sales, expenses, view reports |
 | `production@demo.local` | Production Staff | record eggs only (no money screens) |
 | `sales@demo.local` | Sales Staff | sales, customers, payments |
@@ -70,7 +71,13 @@ Without `--no-mfa` the Owner must set up an authenticator app on first sign-in (
 2. Airplane mode → record another shift → banner “Offline”, record saved → turn Wi-Fi on → it syncs (More → Sync).
 3. Sales → New sale (2 cartons, paid in full); then credit sale for “Mama Kadi” → Customers shows what she owes → record a payment.
 4. Sign in as owner → Reports → Share PDF; Admin → Audit log → “Check integrity”.
-5. Sign in as production → confirm no finance screens; Settings → Lock app with fingerprint.
+5. Sign in as production → confirm no finance screens; Home shows production figures (today, yesterday, 7 days, month); Settings → Lock app with fingerprint.
+6. Sign in as sales → Home shows sales figures (today, 7 days, month, average sale, top customers) and customer counts, but no expenses or production.
+7. Sign in as owner → More → Administration → Coops → Add a coop (name, optional capacity); it appears in the production form straight away.
+8. Owner → Administration → Users → Invite a user: the invitee gets an email (needs `BREVO_API_KEY`; without it the message is captured in memory and not sent) with a temporary password (business initials + year, for example `DF2026` for "Demo Farm"). Signing in with it asks for a new password immediately.
+9. Tap your photo (top right) → Dark mode / Settings / Log out. Settings → Appearance also has Light / Dark / Same as phone.
+
+> The demo super admin is for **local or throwaway databases only**. For a real system create the first Super Admin with `npm run bootstrap:admin`.
 6. Password change signs you out everywhere; Devices and sessions lists the phone.
 Push notifications additionally need a real EAS project id + FCM/APNs credentials (`docs/mobile/release-eas.md`); everything else works without them.
 

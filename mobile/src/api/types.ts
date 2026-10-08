@@ -37,9 +37,16 @@ export interface InventoryTx { id: string; type: string; quantityEggs: number; o
 
 export interface Dashboard {
   businessDate: string; currency: string; generatedAt: string;
-  production?: { todayEggs: number; byCoop: { coopId: string; name: string; eggs: number }[]; byShift: { shift: Shift; eggs: number }[]; notRecordedToday: { coopId: string; coop: string; shift: Shift }[]; last14Days: { date: string; eggs: number }[] };
+  production?: {
+    yesterdayEggs: number; weekEggs: number; averagePerDay7: number; monthEggs: number; recordsToday: number; recordsMonth: number; activeCoops: number; bestDay14: { date: string; eggs: number } | null;
+    todayEggs: number; byCoop: { coopId: string; name: string; eggs: number }[]; byShift: { shift: Shift; eggs: number }[]; notRecordedToday: { coopId: string; coop: string; shift: Shift }[]; last14Days: { date: string; eggs: number }[];
+  };
   inventory?: InventorySnapshot;
-  sales?: { todayRevenue: string; todayCount: number; todayEggsSold: number; last14Days: { date: string; revenue: string }[] };
+  sales?: {
+    todayRevenue: string; todayCount: number; todayEggsSold: number; weekRevenue: string; weekCount: number; monthRevenue: string; monthCount: number; monthEggsSold: number;
+    averageSaleMonth: string; unpaidSales: number; topCustomersMonth: { name: string; total: string }[]; last14Days: { date: string; revenue: string }[];
+  };
+  customers?: { total: number; regular: number; wholesale: number; addedThisMonth: number };
   expenses?: { todayTotal: string; todayCount: number; monthToDateTotal: string; byCategoryToday: { category: string; total: string }[]; last14Days: { date: string; total: string }[] };
   cash?: { receivedToday: string; expensesToday: string; netCashFlowToday: string; basis: string };
   receivables?: { outstandingTotal: string; customersWithBalance: number };
@@ -72,7 +79,7 @@ export interface ReportResult {
   tables: ReportTable[];
 }
 
-export interface Coop { id: string; name: string }
+export interface Coop { id: string; name: string; active?: boolean; capacity?: number | null; notes?: string | null }
 export interface UnitInfo { code: Unit; name?: string; eggsPerUnit: number }
 export interface Supplier { id: string; name: string; phone: string | null; notes: string | null; active: boolean }
 export interface PriceRow { id: string; unit: Unit; amount: string; effectiveFrom: string; effectiveTo: string | null; reason: string | null }

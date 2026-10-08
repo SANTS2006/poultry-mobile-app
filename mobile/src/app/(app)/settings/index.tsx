@@ -1,15 +1,14 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
 import { Alert, Pressable, Switch, View } from 'react-native';
 import { APP_ENV, APP_VERSION } from '../../../config';
-import { describeError } from '../../../lib/errors';
 import { IS_EXPO_GO } from '../../../lib/runtime';
 import { authenticateLocally, biometricsAvailable } from '../../../services/biometrics';
-import { unregisterPush } from '../../../services/push';
-import { UnsyncedDataError } from '../../../services/session-manager';
-import { useApp, useEndpoints } from '../../../state/app';
+import { useApp } from '../../../state/app';
+import { useSignOut } from '../../../state/sign-out';
+import type { ThemeMode } from '../../../state/theme-pref';
+import { useThemeMode } from '../../../state/use-theme-mode';
 import { useAppStore } from '../../../state/store';
-import { Avatar, Badge, Button, Card, ListRow, Screen, SectionHeader, Text } from '../../../ui/components';
+import { Avatar, Badge, Button, Card, ListRow, Screen, SectionHeader, Segmented, Text } from '../../../ui/components';
 import { Icon } from '../../../ui/icon';
 import { space, useColors } from '../../../ui/theme';
 
@@ -19,10 +18,10 @@ export default function Settings() {
   const router = useRouter();
   const c = useColors();
   const { services } = useApp();
-  const api = useEndpoints();
   const user = useAppStore((s) => s.user);
   const bio = useAppStore((s) => s.biometricLock);
-  const [busy, setBusy] = useState(false);
+  const { signOut, busy } = useSignOut();
+  const theme = useThemeMode();
   const group = { padding: 0, gap: 0, overflow: 'hidden' } as const;
 
   async function toggleBiometric(on: boolean) {
@@ -32,24 +31,6 @@ export default function Settings() {
     }
     await services.secure.set(BIOMETRIC_PREF, on ? '1' : '0');
     useAppStore.getState().setBiometricLock(on);
-  }
-
-  async function signOut(discard = false) {
-    setBusy(true);
-    try {
-      // Check for unsent records BEFORE touching anything, so a refused sign-out leaves the session (and push) intact.
-      const { unsynced } = await services.engine.summary();
-      if (unsynced > 0 && !discard) throw new UnsyncedDataError(unsynced, false);
-      await unregisterPush(api);
-      await services.session.logout({ discardUnsynced: discard });
-    } catch (e) {
-      if (e instanceof UnsyncedDataError) {
-        Alert.alert('Records not sent yet', e.message, [
-          { text: 'Stay signed in', style: 'cancel' },
-          { text: 'Sign out and discard them', style: 'destructive', onPress: () => void signOut(true) },
-        ]);
-      } else Alert.alert('Could not sign out', describeError(e));
-    } finally { setBusy(false); }
   }
 
   return (
@@ -95,11 +76,19 @@ export default function Settings() {
       </View>
 
       <View style={{ gap: space.md }}>
+        <SectionHeader title="Appearance" />
+        <Card style={{ gap: space.md }}>
+          <Segmented<ThemeMode> label="Theme" value={theme.mode} onChange={theme.setMode} options={[{ value: 'system', label: 'Same as phone' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]} />
+          <Text variant="caption" muted>Dark mode is easier on the eyes at night and saves battery on OLED screens.</Text>
+        </Card>
+      </View>
+
+      <View style={{ gap: space.md }}>
         <SectionHeader title="Notifications" />
         <Card style={group}><ListRow icon="notifications-outline" title="Notification settings" subtitle="Choose what you hear about" onPress={() => router.push('/notifications/preferences')} /></Card>
       </View>
 
-      <Button title="Sign out" variant="secondary" icon="log-out-outline" onPress={() => void signOut()} busy={busy} />
+      <Button title="Sign out" variant="secondary" icon="log-out-outline" onPress={signOut} busy={busy} />
       <View style={{ alignItems: 'center', gap: space.xs }}>
         <Icon name="egg" size="sm" color={c.muted} />
         <Text variant="caption" muted>Makarifor Poultry {APP_VERSION}{APP_ENV !== 'production' ? ` · ${APP_ENV}` : ''}</Text>

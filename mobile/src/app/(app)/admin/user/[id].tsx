@@ -23,7 +23,17 @@ export default function UserDetail() {
   const sessions = useQuery({ queryKey: ['admin', 'user', id, 'sessions'], queryFn: () => api.admin.userSessions(id) });
   const [action, setAction] = useState<Action | null>(null);
   const [role, setRole] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
   const u = q.data;
+
+  async function resend() {
+    setResending(true);
+    try {
+      const r = await api.admin.resendInvite(id);
+      await qc.invalidateQueries({ queryKey: ['admin'] });
+      if (r.emailSent) toast.show('Invitation sent again'); else toast.show('The email could not be sent. Check the Brevo settings.', 'error');
+    } catch (e) { toast.show(describeError(e), 'error'); } finally { setResending(false); }
+  }
 
   if (q.isLoading) return <Screen><Loading /></Screen>;
   if (!u) return <Screen><ErrorView message={describeError(q.error)} onRetry={() => void q.refetch()} /></Screen>;
@@ -57,6 +67,14 @@ export default function UserDetail() {
       <Segmented value={role ?? (u.roles[0] ?? null)} onChange={(v) => { setRole(v); }} options={(roles.data ?? []).map((r) => ({ value: r.code, label: r.name }))} />
       <Button title="Save role" variant="secondary" disabled={!role || role === u.roles[0] || self} onPress={() => setAction('roles')} />
       {self ? <Text size="small" muted>You cannot change your own role.</Text> : null}
+
+      {u.status === 'INVITED' ? (
+        <Card tone="info">
+          <Text bold>Waiting for their first sign-in</Text>
+          <Text>They have a temporary password by email (valid 72 hours). Resend if it expired or never arrived; the old one stops working.</Text>
+          <Button title="Resend invitation" icon="paper-plane-outline" variant="secondary" busy={resending} onPress={() => void resend()} />
+        </Card>
+      ) : null}
 
       <SectionTitle>Access</SectionTitle>
       {u.status === 'DISABLED' ? <Button title="Re-enable account" onPress={() => setAction('reactivate')} /> : <Button title="Disable account" variant="danger" disabled={self} onPress={() => setAction('disable')} />}

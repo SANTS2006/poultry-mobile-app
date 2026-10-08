@@ -18,12 +18,14 @@ SQLite (SQLCipher, key in Keychain/Keystore) for the offline outbox and cached r
 
 ## Screens
 Sign-in (password → MFA code / recovery code; mandatory MFA enrolment for privileged roles with QR and recovery codes), forgot/reset password,
-accept invitation, biometric lock · Home dashboard (only sections the role may see; cash flow labelled "not profit") · Production (list, record, correct, void) ·
+first-sign-in password change (temporary password from the invitation e-mail), biometric lock · Home dashboard (only sections the role may see; cash flow labelled "not profit") · Production (list, record, correct, void) ·
 Sales (list, new sale, detail, payment, void) · Customers (list, detail, new) · Expenses (list, new) · Stock (balance, history, adjustments, ledger check) ·
 Reports (5 reports, period presets, PDF/CSV share sheet) · Notification centre + preferences + push registration · Sync centre (waiting / attention / discard) ·
 Notification detail (opening one marks it read) · Stock movement detail (who, when, stock afterwards, link to the source sale/production) ·
 Every main screen has a bell with a live unread count and a profile button (photo or initials) at the top right; the profile button opens Settings ·
-Settings (edit profile photo and name, change email, password, MFA, devices/sessions, biometric lock, sign-out) · Admin (users, roles, invite, prices, notification rules, audit log with integrity check).
+Settings (edit profile photo and name, change email, password, MFA, devices/sessions, biometric lock, sign-out) · Admin (users, roles, invite and resend invitation, coops, prices, notification rules, audit log with integrity check).
+Top-right profile menu: Dark/Light mode, Settings, Log out. Settings → Appearance: Light / Dark / Same as phone (applied through `Appearance.setColorScheme`, remembered on the phone).
+Home, Production and Sales show role-appropriate summary figures from `GET /v1/dashboard`, which is open to every signed-in user and returns only the sections the caller's permissions allow.
 
 ## Security decisions
 - Tokens only in the platform secure store (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`); never AsyncStorage, never URLs (realtime token in the handshake `auth`).
@@ -59,3 +61,7 @@ API URLs in `eas.json` (`*.example.invalid`), iOS `ascAppId`, and FCM/APNs crede
 - The photo picker/camera (`expo-image-picker`, `expo-image-manipulator`) and the new screens were type-checked, unit-tested where logic exists and bundled for Android and iOS, but not run on a device.
 - The sign-in screen follows the supplied template's layout (brand header, rounded white sheet, pill fields and button) in the app's own green/amber palette. The template's Google/Facebook buttons and "agree to terms" checkbox are not built: there is no social sign-in, and no terms document to link to. Accounts are invite-only.
 - Expense receipt photos and approval workflow are not implemented (as documented in Phase 6).
+
+### Push and live notifications
+- After the first sign-in on a phone the app asks for notification permission once and registers the device (Settings → Notification settings can do it again). **Remote push cannot work inside Expo Go**: it needs a development or store build with Expo/FCM/APNs credentials (see `docs/mobile/release-eas.md`) and `PUSH_PROVIDER=expo` on the server. Unverified here: no real push was delivered.
+- Live in-app notifications work everywhere, Expo Go included: the server sends `notification.created` over the realtime socket, the bell count refreshes and a short banner shows the new title.

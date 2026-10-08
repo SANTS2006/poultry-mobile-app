@@ -20,7 +20,7 @@ export default function More() {
   const canCustomers = useCan('customers.read');
   const canExpenses = useCan('expenses.read');
   const canReports = useCan('reports.read');
-  const canAdmin = useCanAny('users.manage', 'audit.read', 'prices.manage', 'notifications.manage');
+  const canAdmin = useCanAny('users.manage', 'audit.read', 'prices.manage', 'notifications.manage', 'farms.manage');
   const group = { padding: 0, gap: 0, overflow: 'hidden' } as const;
 
   return (

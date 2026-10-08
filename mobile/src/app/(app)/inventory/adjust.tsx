@@ -3,9 +3,10 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import type { Unit } from '../../../api/types';
 import { describeError } from '../../../lib/errors';
+import { minLength, required, useForm } from '../../../lib/validation';
 import { newId } from '../../../services/platform';
 import { useEndpoints } from '../../../state/app';
-import { Button, Card, Field, Screen, Segmented, Stepper, Text } from '../../../ui/components';
+import { Button, Card, Field, InlineError, Screen, Segmented, Stepper, Text } from '../../../ui/components';
 import { useToast } from '../../../ui/toast';
 
 type Kind = 'DAMAGE' | 'LOSS' | 'USAGE' | 'INCREASE' | 'DECREASE';
@@ -19,19 +20,20 @@ export default function AdjustStock() {
   const [kind, setKind] = useState<Kind>('DAMAGE');
   const [unit, setUnit] = useState<Unit>('EGG');
   const [qty, setQty] = useState(0);
-  const [reason, setReason] = useState('');
+  const form = useForm({ reason: '' }, { reason: [required('Please explain why.'), minLength(5, 'Please explain in at least 5 characters.')] });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clientId] = useState(newId); // retrying the same form never applies it twice
 
   async function save() {
+    const ok = form.submit();
     if (qty < 1) return setError('Enter how many.');
-    if (reason.trim().length < 5) return setError('Please explain why (at least 5 characters).');
+    if (!ok) return;
     setBusy(true); setError(null);
     try {
       await api.inventory.adjust({
         type: kind === 'INCREASE' || kind === 'DECREASE' ? 'ADJUSTMENT' : kind, ...(kind === 'INCREASE' || kind === 'DECREASE' ? { direction: kind } : {}),
-        unit, quantity: qty, reason: reason.trim(), clientId,
+        unit, quantity: qty, reason: form.values.reason.trim(), clientId,
       });
       await qc.invalidateQueries();
       toast.show('Stock updated');
@@ -52,7 +54,8 @@ export default function AdjustStock() {
       ]} />
       <Segmented<Unit> label="Unit" value={unit} onChange={setUnit} options={[{ value: 'EGG', label: 'Eggs' }, { value: 'CRATE', label: 'Crates' }, { value: 'CARTON', label: 'Cartons' }]} />
       <Stepper label="How many" value={qty} onChange={setQty} />
-      <Field label="Reason" value={reason} onChangeText={setReason} maxLength={300} error={error} />
+      <Field label="Reason" icon="chatbox-ellipses-outline" {...form.field('reason')} maxLength={300} />
+      {error ? <InlineError message={error} /> : null}
       <Button title="Save adjustment" onPress={() => void save()} busy={busy} />
     </Screen>
   );

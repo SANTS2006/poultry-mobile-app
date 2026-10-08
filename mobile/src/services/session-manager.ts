@@ -18,12 +18,15 @@ const cacheable = (u: UserSummary): string => JSON.stringify({ ...u, avatar: und
 export type LoginOutcome =
   | { kind: 'authenticated'; user: UserSummary }
   | { kind: 'mfa_required'; mfaToken: string }
-  | { kind: 'mfa_setup_required'; setupToken: string };
+  | { kind: 'mfa_setup_required'; setupToken: string }
+  /** First sign-in with a temporary password: choose a new password before anything else. */
+  | { kind: 'password_change_required'; passwordToken: string };
 
 type AuthResponse =
   | { status: 'authenticated'; tokens: SessionTokens; user: UserSummary }
   | { status: 'mfa_required'; mfaToken: string }
-  | { status: 'mfa_setup_required'; setupToken: string };
+  | { status: 'mfa_setup_required'; setupToken: string }
+  | { status: 'password_change_required'; passwordToken: string };
 
 export type SessionStatus = 'booting' | 'signed_out' | 'signed_in';
 
@@ -98,6 +101,11 @@ export class SessionManager {
     return this.handle(await this.pub.post<AuthResponse>('/v1/auth/mfa/verify', { mfaToken, ...proof }));
   }
 
+  /** Replaces the temporary password from the invitation. The server then continues the sign-in (second factor, authenticator enrolment or a session). */
+  async completeFirstPassword(passwordToken: string, newPassword: string): Promise<LoginOutcome> {
+    return this.handle(await this.pub.post<AuthResponse>('/v1/auth/first-password', { passwordToken, newPassword }));
+  }
+
   /** Privileged roles must enrol before getting a session: the setup token authorises only these two calls. */
   async beginMfaSetup(setupToken: string) {
     return this.pub.post<{ secret: string; otpauthUri: string; qrCodeDataUrl: string }>('/v1/auth/mfa/enroll', undefined, { Authorization: `Bearer ${setupToken}` });
@@ -111,6 +119,7 @@ export class SessionManager {
   private async handle(res: AuthResponse): Promise<LoginOutcome> {
     if (res.status === 'mfa_required') return { kind: 'mfa_required', mfaToken: res.mfaToken };
     if (res.status === 'mfa_setup_required') return { kind: 'mfa_setup_required', setupToken: res.setupToken };
+    if (res.status === 'password_change_required') return { kind: 'password_change_required', passwordToken: res.passwordToken };
     await this.assertOutboxAllows(res.user.id);
     await this.tokens.setSession(res.tokens);
     await this.secure.set(USER_KEY, cacheable(res.user));

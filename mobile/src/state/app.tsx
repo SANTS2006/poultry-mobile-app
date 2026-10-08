@@ -9,6 +9,8 @@ import { API_URL, CONFIG_ERROR } from '../config';
 import { shouldLock } from '../lib/app-lock';
 import { biometricsAvailable } from '../services/biometrics';
 import { getServices, refreshReference, type Services } from '../services/container';
+import { useLiveNotice } from './live-notice';
+import { loadThemeMode } from './theme-pref';
 import { configureForegroundNotifications, loadNotifications, registerForPush, routeForNotification } from '../services/push';
 import { RealtimeClient, type SocketFactory } from '../services/realtime';
 import { AuthRequiredError, HttpError } from '../sync/types';
@@ -73,11 +75,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
             onInvalidate: (keys) => keys.forEach((k) => void queryClient.invalidateQueries({ queryKey: k })),
             onSessionEnded: () => { void services.session.sessionEnded(); },
             onStatus: (s) => store.getState().setRealtime(s),
+            onNotification: () => {
+              void api.notifications.list({ page: 1, limit: 1 }).then((p) => { const n = p.items[0]; if (n && !n.readAt) useLiveNotice.getState().announce({ id: n.id, title: n.title }); }).catch(() => undefined);
+            },
           });
           realtime.start();
           stopAuto = services.engine.startAutoSync();
           void refreshReference(services);
-          void registerForPush(api, false); // never prompts at start-up; the Settings screen asks explicitly
+          void enablePushOnce(api, services.secure); // asks once, right after the first sign-in on this phone; Settings can ask again
           void services.engine.resumeAfterLogin().catch(() => undefined);
         };
 
@@ -93,6 +98,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }));
         void services.engine.summary().then((s) => store.getState().setSync(s));
 
+        await loadThemeMode(services.secure);
         const pref = await services.secure.get(BIOMETRIC_PREF);
         const canBio = pref === '1' && (await biometricsAvailable());
         store.getState().setBiometricLock(canBio);
@@ -141,4 +147,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   if (bootError) return <BootError message={bootError} />;
   if (!value) return <BootSplash />;
   return <AppContext.Provider value={value}><QueryClientProvider client={value.queryClient}>{children}</QueryClientProvider></AppContext.Provider>;
+}
+
+const PUSH_ASKED = 'pref.pushAsked';
+
+/**
+ * Turns push notifications on: asks for permission once (the first time someone signs in on this phone), registers the token, and from then
+ * on only refreshes it silently. Inside Expo Go there is no remote push at all, so this does nothing there; in-app notifications and the
+ * live bell count still work.
+ */
+async function enablePushOnce(api: ReturnType<typeof createEndpoints>, secure: { get(k: string): Promise<string | null>; set(k: string, v: string): Promise<void> }): Promise<void> {
+  try {
+    const asked = (await secure.get(PUSH_ASKED)) === '1';
+    const r = await registerForPush(api, !asked);
+    if (r.ok || (r.ok === false && r.reason !== 'expo_go' && r.reason !== 'not_a_device')) await secure.set(PUSH_ASKED, '1');
+  } catch { /* push is a convenience; never block sign-in */ }
 }
