@@ -31,11 +31,11 @@ export default function ForgotPassword() {
   }
 
   return (
-    <AuthShell back compact title={sent ? 'Check your email' : 'Forgot your password?'} subtitle={sent ? undefined : 'Enter your email and we’ll send you a code to choose a new password.'}>
+    <AuthShell back compact title={sent ? 'Check your email' : 'Forgot your password?'} subtitle={sent ? undefined : 'Enter your email and we’ll send you an 8-digit code, valid for 5 minutes.'}>
       {sent ? (
-        <SuccessPanel title="Reset code sent" body="If an account exists for that address, we’ve emailed a reset code. It works once and expires in an hour.">
+        <SuccessPanel title="Reset code sent" body="If an account exists for that address, we’ve emailed an 8-digit reset code. It works once, only for that address, and expires in 5 minutes.">
           <View style={{ alignSelf: 'stretch', gap: space.md }}>
-            <Button pill title="I have a reset code" icon="key-outline" onPress={() => router.replace('/reset-password')} />
+            <Button pill title="I have a reset code" icon="key-outline" onPress={() => router.replace({ pathname: '/reset-password', params: { email: form.values.email.trim() } })} />
             <Button pill title="Back to sign in" variant="ghost" onPress={() => router.replace('/login')} />
           </View>
         </SuccessPanel>

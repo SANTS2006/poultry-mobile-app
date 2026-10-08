@@ -65,3 +65,7 @@ API URLs in `eas.json` (`*.example.invalid`), iOS `ascAppId`, and FCM/APNs crede
 ### Push and live notifications
 - After the first sign-in on a phone the app asks for notification permission once and registers the device (Settings → Notification settings can do it again). **Remote push cannot work inside Expo Go**: it needs a development or store build with Expo/FCM/APNs credentials (see `docs/mobile/release-eas.md`) and `PUSH_PROVIDER=expo` on the server. Unverified here: no real push was delivered.
 - Live in-app notifications work everywhere, Expo Go included: the server sends `notification.created` over the realtime socket, the bell count refreshes and a short banner shows the new title.
+
+### Security on the phone (added)
+- App contents are hidden by a cover whenever the app is not in the foreground (app switcher, notification shade); screenshots and screen recording are blocked on the screens that show passwords, recovery codes or authenticator keys (`expo-screen-capture`).
+- Password reset: 8-digit code, 5 minutes, one use, tied to the e-mail address, locked after 5 wrong tries (server-enforced; see the security docs). The reset screen asks for the e-mail address and the code.

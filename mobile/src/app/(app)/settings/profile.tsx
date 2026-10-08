@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Alert, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { describeError } from '../../../lib/errors';
 import { fullName, required, useForm } from '../../../lib/validation';
 import { pickAvatar } from '../../../lib/avatar';
 import { useApp, useEndpoints } from '../../../state/app';
+import { useDialog } from '../../../ui/dialog';
 import { useAppStore } from '../../../state/store';
-import { Avatar, Button, Card, Field, Screen, Text } from '../../../ui/components';
+import { Avatar, Button, Card, Field, Text } from '../../../ui/components';
+import { SheetScreen } from '../../../ui/sheet-screen';
 import { Icon } from '../../../ui/icon';
 import { radius, space, useColors } from '../../../ui/theme';
 import { useToast } from '../../../ui/toast';
@@ -16,6 +18,7 @@ export default function EditProfile() {
   const { services } = useApp();
   const c = useColors();
   const toast = useToast();
+  const dialog = useDialog();
   const user = useAppStore((s) => s.user);
   const form = useForm({ name: user?.fullName ?? '' }, { name: [required('Enter your name.'), fullName] });
   const [busy, setBusy] = useState<'photo' | 'name' | null>(null);
@@ -23,8 +26,8 @@ export default function EditProfile() {
   async function savePhoto(source: 'library' | 'camera') {
     const r = await pickAvatar(source);
     if (!r.ok) {
-      if (r.reason === 'permission_denied') Alert.alert('Permission needed', source === 'camera' ? 'Allow camera access in your phone settings to take a photo.' : 'Allow photo access in your phone settings to choose a picture.');
-      else if (r.reason === 'error') Alert.alert('Could not use that photo', r.detail ?? 'Try a different picture.');
+      if (r.reason === 'permission_denied') void dialog.notify({ title: 'Permission needed', tone: 'warn', message: source === 'camera' ? 'Allow camera access in your phone settings to take a photo.' : 'Allow photo access in your phone settings to choose a picture.' });
+      else if (r.reason === 'error') void dialog.notify({ title: 'Could not use that photo', message: r.detail ?? 'Try a different picture.', tone: 'danger' });
       return;
     }
     await run('photo', () => api.account.updateProfile({ avatar: r.dataUrl }), 'Photo updated');
@@ -37,13 +40,18 @@ export default function EditProfile() {
     finally { setBusy(null); }
   }
 
-  function choose() {
-    Alert.alert('Profile photo', undefined, [
-      { text: 'Take a photo', onPress: () => void savePhoto('camera') },
-      { text: 'Choose from library', onPress: () => void savePhoto('library') },
-      ...(user?.avatar ? [{ text: 'Remove photo', style: 'destructive' as const, onPress: () => void run('photo', () => api.account.updateProfile({ avatar: null }), 'Photo removed') }] : []),
-      { text: 'Cancel', style: 'cancel' as const },
-    ]);
+  async function choose() {
+    const pick = await dialog.ask<'camera' | 'library' | 'remove' | 'cancel'>({
+      title: 'Profile photo', message: 'Choose where the picture comes from.', tone: 'info', icon: 'camera',
+      actions: [
+        { label: 'Take a photo', value: 'camera' }, { label: 'Choose from library', value: 'library', variant: 'secondary' },
+        ...(user?.avatar ? [{ label: 'Remove photo', value: 'remove' as const, variant: 'danger' as const }] : []),
+        { label: 'Cancel', value: 'cancel', variant: 'ghost' },
+      ],
+    });
+    if (pick === 'remove') await run('photo', () => api.account.updateProfile({ avatar: null }), 'Photo removed');
+    else if (pick === 'library') await savePhoto('library');
+    else if (pick === 'camera') await savePhoto('camera');
   }
 
   async function saveName() {
@@ -54,15 +62,15 @@ export default function EditProfile() {
   }
 
   return (
-    <Screen>
+    <SheetScreen title="Edit profile">
       <View style={{ alignItems: 'center', gap: space.md, paddingVertical: space.md }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Change profile photo" onPress={choose} disabled={busy === 'photo'}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Change profile photo" onPress={() => void choose()} disabled={busy === 'photo'}>
           <Avatar name={user?.fullName ?? '?'} uri={user?.avatar} size={112} />
           <View style={{ position: 'absolute', right: 0, bottom: 0, width: 36, height: 36, borderRadius: radius.pill, backgroundColor: c.primary, borderWidth: 3, borderColor: c.bg, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="camera" size="sm" color={c.onPrimary} />
           </View>
         </Pressable>
-        <Button title={busy === 'photo' ? 'Saving…' : 'Change photo'} variant="ghost" small onPress={choose} busy={busy === 'photo'} />
+        <Button title={busy === 'photo' ? 'Saving…' : 'Change photo'} variant="ghost" small onPress={() => void choose()} busy={busy === 'photo'} />
       </View>
 
       <Card style={{ gap: space.lg }}>
@@ -71,6 +79,6 @@ export default function EditProfile() {
       </Card>
 
       <Text variant="caption" muted style={{ textAlign: 'center' }}>Your name and photo are visible to administrators of this farm.</Text>
-    </Screen>
+    </SheetScreen>
   );
 }

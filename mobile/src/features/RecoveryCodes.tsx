@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 import { AuthHeader } from '../ui/brand';
 import { Button, Card, Screen, Text } from '../ui/components';
+import { useSecureScreen } from '../ui/secure-screen';
 import { space, useColors } from '../ui/theme';
 
 /**
@@ -9,6 +10,7 @@ import { space, useColors } from '../ui/theme';
  * Codes are selectable so they can be copied into a password manager; we deliberately do not write them to disk or the clipboard.
  */
 export function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
+  useSecureScreen();
   const c = useColors();
   const [saved, setSaved] = useState(false);
   return (

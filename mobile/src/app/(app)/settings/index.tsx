@@ -1,10 +1,11 @@
 import { useRouter } from 'expo-router';
-import { Alert, Pressable, Switch, View } from 'react-native';
+import { Pressable, Switch, View } from 'react-native';
 import { APP_ENV, APP_VERSION } from '../../../config';
 import { IS_EXPO_GO } from '../../../lib/runtime';
 import { authenticateLocally, biometricsAvailable } from '../../../services/biometrics';
 import { useApp } from '../../../state/app';
 import { useSignOut } from '../../../state/sign-out';
+import { useDialog } from '../../../ui/dialog';
 import type { ThemeMode } from '../../../state/theme-pref';
 import { useThemeMode } from '../../../state/use-theme-mode';
 import { useAppStore } from '../../../state/store';
@@ -22,11 +23,12 @@ export default function Settings() {
   const bio = useAppStore((s) => s.biometricLock);
   const { signOut, busy } = useSignOut();
   const theme = useThemeMode();
+  const dialog = useDialog();
   const group = { padding: 0, gap: 0, overflow: 'hidden' } as const;
 
   async function toggleBiometric(on: boolean) {
     if (on) {
-      if (!(await biometricsAvailable())) return Alert.alert('Not available', 'Set up a fingerprint, face or screen lock in your phone settings first.');
+      if (!(await biometricsAvailable())) return void dialog.notify({ title: 'Not available', message: 'Set up a fingerprint, face or screen lock in your phone settings first.', tone: 'warn' });
       if (!(await authenticateLocally('Confirm to turn on the app lock'))) return;
     }
     await services.secure.set(BIOMETRIC_PREF, on ? '1' : '0');

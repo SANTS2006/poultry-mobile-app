@@ -4,8 +4,8 @@ import { describeError } from '../../../lib/errors';
 import { eggBreakdown, formatDate, formatInt, formatMoney, greeting } from '../../../lib/format';
 import { useDashboard } from '../../../queries/hooks';
 import { useAppStore, useCan } from '../../../state/store';
-import { BarChart } from '../../../ui/charts';
-import { ActionTile, Avatar, Badge, Card, ErrorView, ListRow, Loading, Row, Screen, SectionHeader, StatTile, Text } from '../../../ui/components';
+import { BarChart, ChartCard, Histogram, LineChart, PieChart } from '../../../ui/charts';
+import { ActionTile, Avatar, Card, ErrorView, ListRow, Loading, Row, Screen, SectionHeader, StatTile, Text } from '../../../ui/components';
 import { Icon } from '../../../ui/icon';
 import { space, useColors } from '../../../ui/theme';
 
@@ -83,10 +83,27 @@ export default function Home() {
                   {d.production.byCoop.map((x) => <ListRow key={x.coopId} icon="home-outline" title={x.name} subtitle={`${formatInt(x.eggs)} eggs today`} />)}
                 </Card>
               ) : null}
-              <Card>
-                <Row style={{ justifyContent: 'space-between' }}><Text variant="heading">Eggs, last 14 days</Text>{missing.length === 0 ? <Badge tone="ok" label="All shifts in" /> : null}</Row>
-                <BarChart label="Eggs collected per day, last 14 days" data={d.production.last14Days.map((x) => ({ label: formatDate(x.date, false), value: x.eggs }))} />
-              </Card>
+              <ChartCard
+                title="Eggs per day" subtitle={missing.length === 0 ? 'Last 14 days · all of today’s shifts are in' : 'Last 14 days'}
+                rows={d.production.last14Days.map((x) => ({ label: formatDate(x.date, false), value: formatInt(x.eggs) }))}
+              >
+                <LineChart label="Eggs collected per day, last 14 days" unit="eggs" format={formatInt} data={d.production.last14Days.map((x) => ({ label: formatDate(x.date, false), value: x.eggs }))} />
+              </ChartCard>
+              {d.production.byCoop.filter((x) => x.eggs > 0).length > 1 ? (
+                <ChartCard title="Today by coop" subtitle="Share of today’s eggs" rows={d.production.byCoop.map((x) => ({ label: x.name, value: `${formatInt(x.eggs)} eggs` }))}>
+                  <PieChart label="Eggs today by coop" donut centerLabel="eggs today" format={formatInt} slices={d.production.byCoop.map((x) => ({ label: x.name, value: x.eggs }))} />
+                </ChartCard>
+              ) : null}
+              {d.production.byShift.some((x) => x.eggs > 0) ? (
+                <ChartCard title="Today by shift" rows={d.production.byShift.map((x) => ({ label: x.shift.toLowerCase(), value: `${formatInt(x.eggs)} eggs` }))}>
+                  <BarChart label="Eggs today by shift" unit="eggs" format={formatInt} highlightLast={false} data={d.production.byShift.map((x) => ({ label: x.shift.charAt(0) + x.shift.slice(1).toLowerCase(), value: x.eggs }))} />
+                </ChartCard>
+              ) : null}
+              {d.production.last14Days.filter((x) => x.eggs > 0).length >= 4 ? (
+                <ChartCard title="How a day usually goes" subtitle="Number of days at each level of output" rows={d.production.last14Days.filter((x) => x.eggs > 0).map((x) => ({ label: formatDate(x.date, false), value: formatInt(x.eggs) }))}>
+                  <Histogram label="Daily egg output" unit="eggs" values={d.production.last14Days.filter((x) => x.eggs > 0).map((x) => x.eggs)} />
+                </ChartCard>
+              ) : null}
             </View>
           ) : null}
 
@@ -115,10 +132,11 @@ export default function Home() {
                   {d.sales.topCustomersMonth.map((x, i) => <ListRow key={`${x.name}-${i}`} icon="person-outline" title={x.name} subtitle={formatMoney(x.total, cur)} />)}
                 </Card>
               ) : null}
-              <Card>
-                <Text variant="heading">Sales, last 14 days</Text>
-                <BarChart label="Sales value per day, last 14 days" data={d.sales.last14Days.map((x) => ({ label: formatDate(x.date, false), value: Number(x.revenue) }))} />
-              </Card>
+              <ChartCard
+                title="Sales per day" subtitle="Last 14 days" rows={d.sales.last14Days.map((x) => ({ label: formatDate(x.date, false), value: formatMoney(x.revenue, cur) }))}
+              >
+                <LineChart label="Sales value per day, last 14 days" unit={cur} data={d.sales.last14Days.map((x) => ({ label: formatDate(x.date, false), value: Number(x.revenue) }))} />
+              </ChartCard>
             </View>
           ) : null}
 
@@ -139,6 +157,16 @@ export default function Home() {
                 {d.cash ? <StatTile icon="cash-outline" label="Net cash flow today" value={formatMoney(d.cash.netCashFlowToday, cur)} hint="Cash in minus expenses. Not profit." /> : null}
                 {d.expenses ? <StatTile icon="wallet-outline" label="Expenses this month" value={formatMoney(d.expenses.monthToDateTotal, cur)} hint={`Today ${formatMoney(d.expenses.todayTotal, cur)}`} /> : null}
               </View>
+              {d.expenses && d.expenses.byCategoryToday.length ? (
+                <ChartCard title="Spending today" subtitle="By category" rows={d.expenses.byCategoryToday.map((x) => ({ label: x.category, value: formatMoney(x.total, cur) }))}>
+                  <PieChart label="Spending today by category" donut centerLabel={cur ? `${cur} today` : 'today'} slices={d.expenses.byCategoryToday.map((x) => ({ label: x.category, value: Number(x.total) }))} />
+                </ChartCard>
+              ) : null}
+              {d.expenses && d.expenses.last14Days.some((x) => Number(x.total) > 0) ? (
+                <ChartCard title="Expenses per day" subtitle="Last 14 days" rows={d.expenses.last14Days.map((x) => ({ label: formatDate(x.date, false), value: formatMoney(x.total, cur) }))}>
+                  <BarChart label="Expenses per day, last 14 days" unit={cur} data={d.expenses.last14Days.map((x) => ({ label: formatDate(x.date, false), value: Number(x.total) }))} />
+                </ChartCard>
+              ) : null}
             </View>
           ) : null}
 

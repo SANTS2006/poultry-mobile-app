@@ -5,7 +5,8 @@ import { describeError } from '../../../lib/errors';
 import { email, required, useForm } from '../../../lib/validation';
 import { useApp, useEndpoints } from '../../../state/app';
 import { useAppStore } from '../../../state/store';
-import { Button, Card, Field, InlineError, Screen, SectionTitle, Text } from '../../../ui/components';
+import { Button, Card, Field, InlineError, SectionTitle, Text } from '../../../ui/components';
+import { SheetScreen } from '../../../ui/sheet-screen';
 import { space, useColors } from '../../../ui/theme';
 import { useToast } from '../../../ui/toast';
 
@@ -54,7 +55,7 @@ export default function ChangeEmail() {
   }
 
   return (
-    <Screen>
+    <SheetScreen title="Email address">
       <Card>
         <Text variant="caption" muted>Current sign-in address</Text>
         <Text variant="bodyStrong">{user?.email}</Text>
@@ -80,6 +81,6 @@ export default function ChangeEmail() {
         {!pending ? <InlineError message={error} /> : null}
         <Button title={pending ? 'Send a new code' : 'Send confirmation code'} variant={pending ? 'secondary' : 'primary'} icon="paper-plane-outline" onPress={() => void request()} busy={busy === 'request'} />
       </View>
-    </Screen>
+    </SheetScreen>
   );
 }

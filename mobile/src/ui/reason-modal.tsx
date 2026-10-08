@@ -1,46 +1,36 @@
 import { useState } from 'react';
-import { Modal, Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { minLength, required, useForm } from '../lib/validation';
-import { Button, Field, Row, Text } from './components';
-import { radius, space, useColors } from './theme';
+import { Button, Field } from './components';
+import { DialogShell } from './dialog';
+import { space } from './theme';
 
 interface Props {
   visible: boolean; title: string; message?: string; confirmLabel?: string; danger?: boolean; onCancel: () => void; onConfirm: (reason: string) => void | Promise<void>;
 }
 
 /**
- * Cross-platform "type a reason" dialog (Alert.prompt exists on iOS only). Sensitive changes — voids, corrections, disabling users —
- * always need a written reason (5+ characters) because it is stored in the audit log.
+ * "Type a reason" dialog. Sensitive changes — voids, corrections, disabling users — always need a written reason (5+ characters)
+ * because it is stored in the audit log. Mounted only while visible, so every opening starts with an empty form.
  */
 export function ReasonModal(props: Props) {
-  const c = useColors();
   return (
-    <Modal visible={props.visible} transparent animationType="fade" onRequestClose={props.onCancel}>
-      <Pressable style={{ flex: 1, backgroundColor: c.overlay, justifyContent: 'center', padding: space.lg }} onPress={props.onCancel}>
-        {/* mounted only while visible, so every opening starts with an empty form */}
-        {props.visible ? <ReasonBody {...props} /> : null}
-      </Pressable>
-    </Modal>
+    <DialogShell visible={props.visible} onClose={props.onCancel} tone={props.danger ? 'danger' : 'warn'} icon="create-outline" title={props.title} message={props.message ?? 'The reason is saved in the audit log.'}>
+      {props.visible ? <ReasonBody {...props} /> : null}
+    </DialogShell>
   );
 }
 
-function ReasonBody({ title, message, confirmLabel = 'Confirm', danger, onCancel, onConfirm }: Props) {
-  const c = useColors();
+function ReasonBody({ confirmLabel = 'Confirm', danger, onCancel, onConfirm }: Props) {
   const form = useForm({ reason: '' }, { reason: [required('Please give a reason.'), minLength(5, 'Please explain in at least 5 characters.')] });
   const [busy, setBusy] = useState(false);
   const reason = form.values.reason;
   const ok = reason.trim().length >= 5;
   return (
-    <Pressable style={{ backgroundColor: c.card, borderRadius: radius.lg, padding: space.lg, gap: space.md }} onPress={() => undefined}>
-      <Text size="title" bold accessibilityRole="header">{title}</Text>
-      {message ? <Text muted>{message}</Text> : null}
+    <View style={{ gap: space.md }}>
       <Field label="Reason (at least 5 characters)" {...form.field('reason')} maxLength={300} autoFocus />
-      <View style={{ gap: space.sm }}>
-        <Row style={{ justifyContent: 'flex-end' }}>
-          <Button title="Cancel" variant="ghost" onPress={onCancel} />
-          <Button title={confirmLabel} variant={danger ? 'danger' : 'primary'} disabled={!ok} busy={busy} onPress={async () => { setBusy(true); try { await onConfirm(reason.trim()); } finally { setBusy(false); } }} />
-        </Row>
-      </View>
-    </Pressable>
+      <Button pill title={confirmLabel} variant={danger ? 'danger' : 'primary'} disabled={!ok} busy={busy} onPress={async () => { setBusy(true); try { await onConfirm(reason.trim()); } finally { setBusy(false); } }} />
+      <Button pill title="Cancel" variant="ghost" onPress={onCancel} />
+    </View>
   );
 }

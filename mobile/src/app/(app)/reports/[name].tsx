@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, View } from 'react-native';
+import { View } from 'react-native';
 import type { Cell, ReportTable } from '../../../api/types';
 import { describeError } from '../../../lib/errors';
 import { formatDate, formatDateTime, formatMoney } from '../../../lib/format';
@@ -10,6 +10,7 @@ import { useReference } from '../../../queries/hooks';
 import { downloadAndShare } from '../../../services/export-file';
 import { useApp, useEndpoints } from '../../../state/app';
 import { useCan } from '../../../state/store';
+import { useDialog } from '../../../ui/dialog';
 import { Button, Card, ErrorView, Loading, Row, Screen, Segmented, SectionTitle, Text } from '../../../ui/components';
 import { space } from '../../../ui/theme';
 
@@ -42,6 +43,7 @@ export default function ReportScreen() {
   const { name } = useLocalSearchParams<{ name: string }>();
   const api = useEndpoints();
   const { services } = useApp();
+  const dialog = useDialog();
   const ref = useReference();
   const canExport = useCan('reports.export');
   const [period, setPeriod] = useState<PeriodKey>('thisMonth');
@@ -56,7 +58,7 @@ export default function ReportScreen() {
     try {
       await downloadAndShare(services.api, api.reports.exportPath(name, { ...range, groupBy, format }), `makarifor-${name}-${range.from}_${range.to}.${format}`, format === 'pdf' ? 'application/pdf' : 'text/csv');
     } catch (e) {
-      Alert.alert('Could not export', describeError(e));
+      void dialog.notify({ title: 'Could not export', message: describeError(e), tone: 'danger' });
     } finally {
       setExporting(null);
     }

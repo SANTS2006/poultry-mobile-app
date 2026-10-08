@@ -1,6 +1,8 @@
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 import { useCan, useCanAny } from '../../../state/store';
+import { IS_IOS } from '../../../ui/glass';
+import { GlassTabBar, type GlassTabBarProps } from '../../../ui/glass-tab-bar';
 import { HeaderActions } from '../../../ui/header-actions';
 import { Icon, type IconName } from '../../../ui/icon';
 import { typeScale, useColors } from '../../../ui/theme';
@@ -19,7 +21,9 @@ export default function TabsLayout() {
   const canRecord = useCanAny('production.create', 'sales.create');
   const anyHome = dashboard || canRecord;
   return (
-    <Tabs screenOptions={{
+    <Tabs
+      tabBar={IS_IOS ? (p) => <GlassTabBar {...(p as unknown as GlassTabBarProps)} /> : undefined}
+      screenOptions={{
       headerStyle: { backgroundColor: c.bg }, headerShadowVisible: false, headerTintColor: c.text, headerTitleStyle: { ...typeScale.heading, color: c.text }, headerRight: () => <HeaderActions />,
       headerTitleAlign: 'left',
       tabBarActiveTintColor: c.primary, tabBarInactiveTintColor: c.muted, tabBarLabelStyle: { ...typeScale.caption, fontWeight: '600' },

@@ -7,6 +7,7 @@ import { useSignOut } from '../state/sign-out';
 import { useThemeMode } from '../state/use-theme-mode';
 import { useAppStore } from '../state/store';
 import { Avatar, Text } from './components';
+import { GlassSurface, IS_IOS } from './glass';
 import { Icon, type IconName } from './icon';
 import { elevation, radius, space, TOUCH, useColors, useIsDark } from './theme';
 
@@ -50,10 +51,8 @@ export function ProfileButton({ size = 34 }: { size?: number }) {
       </Pressable>
       <Modal visible={open} transparent animationType="fade" onRequestClose={close} statusBarTranslucent>
         <Pressable accessibilityLabel="Close menu" style={{ flex: 1, backgroundColor: c.overlay }} onPress={close}>
-          <Pressable
-            accessibilityViewIsModal onPress={() => undefined}
-            style={[{ position: 'absolute', top: insets.top + 56, right: space.lg, width: 280, backgroundColor: c.card, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: 'hidden' }, elevation.card]}
-          >
+          <Pressable accessibilityViewIsModal onPress={() => undefined} style={{ position: 'absolute', top: insets.top + 56, right: space.lg, width: 280 }}>
+            <GlassSurface radius={radius.lg} style={elevation.float}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg }}>
               <Avatar name={user?.fullName ?? '?'} uri={user?.avatar} size={48} />
               <View style={{ flex: 1 }}>
@@ -65,6 +64,7 @@ export function ProfileButton({ size = 34 }: { size?: number }) {
             <MenuItem icon={dark ? 'sunny-outline' : 'moon-outline'} label={dark ? 'Light mode' : 'Dark mode'} onPress={() => { theme.setMode(dark ? 'light' : 'dark'); close(); }} />
             <MenuItem icon="settings-outline" label="Settings" onPress={() => { close(); router.push('/settings'); }} />
             <MenuItem icon="log-out-outline" label="Log out" danger busy={busy} onPress={() => { close(); signOut(); }} />
+            </GlassSurface>
           </Pressable>
         </Pressable>
       </Modal>
@@ -77,7 +77,7 @@ function MenuItem({ icon, label, onPress, danger, busy }: { icon: IconName; labe
   const color = danger ? c.danger : c.text;
   return (
     <Pressable accessibilityRole="menuitem" accessibilityLabel={label} disabled={busy} onPress={onPress} android_ripple={{ color: `${c.primary}1A` }}
-      style={({ pressed }) => ({ minHeight: TOUCH, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, borderTopWidth: 1, borderColor: c.border, backgroundColor: pressed ? c.primarySoft : c.card, opacity: busy ? 0.5 : 1 })}>
+      style={({ pressed }) => ({ minHeight: TOUCH, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, borderTopWidth: 1, borderColor: c.border, backgroundColor: pressed ? c.primarySoft : IS_IOS ? 'transparent' : c.card, opacity: busy ? 0.5 : 1 })}>
       <Icon name={icon} size="md" color={color} />
       <Text variant="bodyStrong" color={color}>{label}</Text>
     </Pressable>

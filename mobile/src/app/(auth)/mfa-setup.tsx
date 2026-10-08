@@ -7,10 +7,12 @@ import { useApp } from '../../state/app';
 import { useAuthFlow } from '../../state/auth-flow';
 import { AuthHeader } from '../../ui/brand';
 import { Button, Card, Field, InlineError, Loading, Screen, Text } from '../../ui/components';
+import { useSecureScreen } from '../../ui/secure-screen';
 import { space } from '../../ui/theme';
 
 /** Privileged roles (Owner, Super Admin) must enrol before receiving a session. The setup token only authorises these two calls. */
 export default function MfaSetup() {
+  useSecureScreen();
   const router = useRouter();
   const { services } = useApp();
   const flow = useAuthFlow();

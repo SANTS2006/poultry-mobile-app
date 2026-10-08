@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert } from 'react-native';
 import { describeError } from '../../lib/errors';
 import { formatDateTime, timeAgo } from '../../lib/format';
 import { useApp } from '../../state/app';
+import { useDialog } from '../../ui/dialog';
 import { useAppStore } from '../../state/store';
 import type { OutboxItem } from '../../sync';
 import { Badge, Button, Card, InlineError, Row, Screen, SectionTitle, Text } from '../../ui/components';
@@ -34,6 +34,7 @@ const STATUS: Record<string, { label: string; tone: 'info' | 'warn' | 'danger' |
  */
 export default function SyncScreen() {
   const { services } = useApp();
+  const dialog = useDialog();
   const sync = useAppStore((s) => s.sync);
   const [items, setItems] = useState<OutboxItem[]>([]);
   const [busy, setBusy] = useState(false);
@@ -47,7 +48,7 @@ export default function SyncScreen() {
 
   async function syncNow() {
     setBusy(true);
-    try { await services.engine.sync(); } catch (e) { Alert.alert('Could not sync', describeError(e)); } finally { setBusy(false); load(); }
+    try { await services.engine.sync(); } catch (e) { void dialog.notify({ title: 'Could not sync', message: describeError(e), tone: 'danger' }); } finally { setBusy(false); load(); }
   }
 
   const Item = ({ i }: { i: OutboxItem }) => (
@@ -58,11 +59,8 @@ export default function SyncScreen() {
       {i.lastError?.message ? <InlineError message={i.lastError.message} /> : null}
       {['conflict', 'rejected', 'blocked'].includes(i.status) ? (
         <Row style={{ flexWrap: 'wrap' }}>
-          <Button title="Try again" variant="secondary" small onPress={() => void services.engine.resolve(i.clientId, 'retry').then(load).catch((e) => Alert.alert('Could not retry', describeError(e)))} />
-          <Button title="Discard" variant="danger" small onPress={() => Alert.alert('Discard this record?', 'It will be removed from this phone and never sent. This cannot be undone.', [
-            { text: 'Keep it', style: 'cancel' },
-            { text: 'Discard', style: 'destructive', onPress: () => void services.engine.resolve(i.clientId, 'discard').then(load).catch((e) => Alert.alert('Could not discard', describeError(e))) },
-          ])} />
+          <Button title="Try again" variant="secondary" small onPress={() => void services.engine.resolve(i.clientId, 'retry').then(load).catch((e) => dialog.notify({ title: 'Could not retry', message: describeError(e), tone: 'danger' }))} />
+          <Button title="Discard" variant="danger" small onPress={() => { void dialog.confirm({ title: 'Discard this record?', message: 'It will be removed from this phone and never sent. This cannot be undone.', confirmLabel: 'Discard', cancelLabel: 'Keep it', destructive: true }).then((ok) => { if (ok) void services.engine.resolve(i.clientId, 'discard').then(load).catch((e) => dialog.notify({ title: 'Could not discard', message: describeError(e), tone: 'danger' })); }); }} />
         </Row>
       ) : null}
     </Card>

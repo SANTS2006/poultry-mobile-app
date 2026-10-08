@@ -4,7 +4,8 @@ import { ProblemList } from '../../../features/ProblemList';
 import { formatMoney } from '../../../lib/format';
 import { maxLength, positiveMoney, required, useForm } from '../../../lib/validation';
 import { useRecord, useSavedToast } from '../../../queries/use-record';
-import { Button, Card, Field, Screen, Segmented, Text } from '../../../ui/components';
+import { Button, Card, Field, Segmented, Text } from '../../../ui/components';
+import { SheetScreen } from '../../../ui/sheet-screen';
 
 const METHODS = [{ value: 'CASH', label: 'Cash' }, { value: 'MOBILE_MONEY', label: 'Mobile money' }, { value: 'BANK_TRANSFER', label: 'Bank' }, { value: 'OTHER', label: 'Other' }] as const;
 
@@ -30,7 +31,7 @@ export default function NewPayment() {
   }
 
   return (
-    <Screen>
+    <SheetScreen title="Record payment">
       <Card tone="info">
         <Text bold>{params.saleId ? `Payment for sale ${params.label ?? ''}` : 'Payment from customer'}</Text>
         {params.owed ? <Text muted>Still owed: {formatMoney(params.owed)}</Text> : null}
@@ -41,6 +42,6 @@ export default function NewPayment() {
       <Field label="Reference (optional)" {...form.field('reference')} maxLength={100} hint="Mobile-money or bank reference" />
       <ProblemList problems={rec.problems} error={rec.error} />
       <Button title="Record payment" onPress={() => void save()} busy={rec.busy} />
-    </Screen>
+    </SheetScreen>
   );
 }

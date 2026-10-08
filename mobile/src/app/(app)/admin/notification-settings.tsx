@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Alert, Switch } from 'react-native';
+import { Switch } from 'react-native';
 import { describeError } from '../../../lib/errors';
 import { money, required, useForm, type Rule } from '../../../lib/validation';
 import { useEndpoints } from '../../../state/app';
 import { Button, ErrorView, Field, ListRow, Loading, Screen, SectionTitle, Text } from '../../../ui/components';
+import { useDialog } from '../../../ui/dialog';
 import { useColors } from '../../../ui/theme';
 import { useToast } from '../../../ui/toast';
 
@@ -27,6 +28,7 @@ function RulesForm({ initial }: { initial: Config }) {
   const qc = useQueryClient();
   const c = useColors();
   const toast = useToast();
+  const dialog = useDialog();
   const [summaryOn, setSummaryOn] = useState(Boolean(initial.dailySummaryEnabled));
   const time24: Rule = (v) => (!v.trim() || HM.test(v.trim()) ? null : 'Use 24-hour time like 18:00.');
   const form = useForm(
@@ -39,7 +41,7 @@ function RulesForm({ initial }: { initial: Config }) {
 
   async function save() {
     const ok = form.submit();
-    if (reminders.some((r) => !HM.test(r.time))) { Alert.alert('Check the reminder times', 'Use 24-hour time like 10:00.'); return; }
+    if (reminders.some((r) => !HM.test(r.time))) { void dialog.notify({ title: 'Check the reminder times', message: 'Use 24-hour time like 10:00.', tone: 'warn' }); return; }
     if (!ok) return;
     setBusy(true);
     try {
@@ -49,7 +51,7 @@ function RulesForm({ initial }: { initial: Config }) {
       });
       await qc.invalidateQueries({ queryKey: ['admin', 'notification-config'] });
       toast.show('Notification rules saved');
-    } catch (e) { Alert.alert('Could not save', describeError(e)); } finally { setBusy(false); }
+    } catch (e) { void dialog.notify({ title: 'Could not save', message: describeError(e), tone: 'danger' }); } finally { setBusy(false); }
   }
 
   return (

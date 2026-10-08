@@ -1,14 +1,18 @@
 import { useState } from 'react';
-import { Alert } from 'react-native';
 import { describeError } from '../../../lib/errors';
 import { differentFrom, newPassword, required, sameAs, useForm } from '../../../lib/validation';
 import { useApp, useEndpoints } from '../../../state/app';
+import { useDialog } from '../../../ui/dialog';
 import { useAppStore } from '../../../state/store';
-import { Button, Card, Field, InlineError, Screen, Text } from '../../../ui/components';
+import { Button, Card, Field, InlineError, Text } from '../../../ui/components';
+import { useSecureScreen } from '../../../ui/secure-screen';
+import { SheetScreen } from '../../../ui/sheet-screen';
 
 export default function ChangePassword() {
+  useSecureScreen();
   const api = useEndpoints();
   const { services } = useApp();
+  const dialog = useDialog();
   const email = useAppStore((s) => s.user?.email);
   const form = useForm(
     { current: '', next: '', again: '' },
@@ -27,7 +31,7 @@ export default function ChangePassword() {
     try {
       await api.account.changePassword(form.values.current, form.values.next);
       // The server signs every session out when the password changes; sign in again with the new one.
-      Alert.alert('Password changed', 'For your security you have been signed out everywhere. Sign in again with the new password.');
+      await dialog.notify({ title: 'Password changed', message: 'For your security you have been signed out everywhere. Sign in again with the new password.', tone: 'success' });
       await services.session.sessionEnded();
     } catch (e) {
       setError(describeError(e));
@@ -35,13 +39,13 @@ export default function ChangePassword() {
   }
 
   return (
-    <Screen>
+    <SheetScreen title="Change password">
       <Card tone="info"><Text>Changing your password signs you out on every device.</Text></Card>
       <Field label="Current password" icon="lock-closed-outline" {...form.field('current')} secureTextEntry textContentType="password" />
       <Field label="New password" icon="key-outline" {...form.field('next')} secureTextEntry textContentType="newPassword" hint="At least 12 characters." />
       <Field label="Repeat new password" icon="key-outline" {...form.field('again')} secureTextEntry textContentType="newPassword" returnKeyType="done" onSubmitEditing={() => void save()} />
       <InlineError message={error} />
       <Button title="Change password" onPress={() => void save()} busy={busy} />
-    </Screen>
+    </SheetScreen>
   );
 }

@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { ProblemList } from '../../../features/ProblemList';
 import { useRecord, useSavedToast } from '../../../queries/use-record';
 import { maxLength, minLength, phone, required, useForm } from '../../../lib/validation';
-import { Button, Field, Screen, Segmented } from '../../../ui/components';
+import { Button, Field, Segmented } from '../../../ui/components';
+import { SheetScreen } from '../../../ui/sheet-screen';
 
 export default function NewCustomer() {
   const router = useRouter();
@@ -25,13 +26,13 @@ export default function NewCustomer() {
   }
 
   return (
-    <Screen>
+    <SheetScreen title="New customer">
       <Field label="Name" icon="person-outline" {...form.field('name')} autoCapitalize="words" maxLength={100} />
       <Field label="Phone (optional)" icon="call-outline" {...form.field('phone')} keyboardType="phone-pad" maxLength={30} />
       <Segmented label="Type" value={type} onChange={setType} options={[{ value: 'REGULAR', label: 'Regular' }, { value: 'WHOLESALE', label: 'Wholesale' }]} />
       <Field label="Address (optional)" icon="location-outline" {...form.field('address')} multiline maxLength={300} />
       <ProblemList problems={rec.problems} error={rec.error} />
       <Button title="Save customer" onPress={() => void save()} busy={rec.busy} />
-    </Screen>
+    </SheetScreen>
   );
 }

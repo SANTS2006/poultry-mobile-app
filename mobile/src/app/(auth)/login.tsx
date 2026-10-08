@@ -9,6 +9,7 @@ import { useApp } from '../../state/app';
 import { useAuthFlow } from '../../state/auth-flow';
 import { AuthShell } from '../../ui/auth-shell';
 import { Button, Card, Field, Row, Text } from '../../ui/components';
+import { useSecureScreen } from '../../ui/secure-screen';
 import { Icon } from '../../ui/icon';
 import { radius, space, useColors } from '../../ui/theme';
 
@@ -16,6 +17,7 @@ const REMEMBER_KEY = 'pref.rememberedEmail';
 const WELCOME_KEY = 'pref.welcomeSeen';
 
 export default function Login() {
+  useSecureScreen();
   const router = useRouter();
   const c = useColors();
   const { services } = useApp();
@@ -89,8 +91,6 @@ export default function Login() {
         </Row>
         <Button pill title="Sign in" onPress={() => void submit()} busy={busy} testID="signin" />
       </View>
-
-      <Text variant="caption" muted style={{ textAlign: 'center' }}>Accounts are created by your administrator. Your invitation e-mail has your temporary password.</Text>
 
       {IS_EXPO_GO || APP_ENV !== 'production' ? (
         <View style={{ alignSelf: 'center', paddingHorizontal: space.md, paddingVertical: space.xs, borderRadius: radius.pill, backgroundColor: c.accentSoft }}>

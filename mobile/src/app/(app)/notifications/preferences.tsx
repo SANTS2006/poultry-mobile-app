@@ -1,11 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Alert, Switch, View } from 'react-native';
+import { Switch, View } from 'react-native';
 import type { NotificationPreference } from '../../../api/types';
 import { describeError } from '../../../lib/errors';
 import { CATEGORY_ICON, CATEGORY_INFO, categoryName } from '../../../lib/notification-meta';
 import { registerForPush } from '../../../services/push';
 import { useEndpoints } from '../../../state/app';
+import { useDialog } from '../../../ui/dialog';
 import { Button, Card, ErrorView, ListRow, Loading, Screen, SectionHeader, Text } from '../../../ui/components';
 import { space, useColors } from '../../../ui/theme';
 
@@ -13,6 +14,7 @@ export default function NotificationPreferences() {
   const api = useEndpoints();
   const qc = useQueryClient();
   const c = useColors();
+  const dialog = useDialog();
   const q = useQuery({ queryKey: ['notifications', 'preferences'], queryFn: () => api.notifications.preferences() });
   const [busy, setBusy] = useState(false);
 
@@ -25,7 +27,7 @@ export default function NotificationPreferences() {
       await api.notifications.setPreferences([{ category, enabled }]);
     } catch (e) {
       qc.setQueryData(key, before);
-      Alert.alert('Could not save', describeError(e));
+      void dialog.notify({ title: 'Could not save', message: describeError(e), tone: 'danger' });
     }
   }
 
@@ -34,12 +36,12 @@ export default function NotificationPreferences() {
     const r = await registerForPush(api, true);
     setBusy(false);
     if (r.ok) {
-      try { const t = await api.notifications.test(); Alert.alert('Push notifications are on', t.provider === 'none' ? 'This server is not configured to send push messages yet, but in-app notifications work.' : 'A test notification is on its way to this phone.'); }
-      catch (e) { Alert.alert('Push is on', describeError(e)); }
-    } else Alert.alert('Push notifications are not on', ({
+      try { const t = await api.notifications.test(); void dialog.notify({ title: 'Push notifications are on', tone: 'success', message: t.provider === 'none' ? 'This server is not configured to send push messages yet, but in-app notifications work.' : 'A test notification is on its way to this phone.' }); }
+      catch (e) { void dialog.notify({ title: 'Push is on', message: describeError(e), tone: 'info' }); }
+    } else void dialog.notify({ title: 'Push notifications are not on', tone: 'warn', message: ({
       expo_go: 'Push notifications do not work inside Expo Go (a limit of Expo Go). In-app notifications still work. Use a development build for push.', not_a_device: 'Push notifications need a real phone (not a simulator).', permission_denied: 'Notifications are blocked for this app. Turn them on in your phone settings.',
       no_project_id: 'This build has no push project configured. Ask your administrator.', error: r.detail ?? 'Something went wrong.',
-    } as const)[r.reason]);
+    } as const)[r.reason] });
   }
 
   return (

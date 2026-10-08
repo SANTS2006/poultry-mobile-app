@@ -6,7 +6,8 @@ import { describeError } from '../../../lib/errors';
 import { minLength, required, useForm } from '../../../lib/validation';
 import { newId } from '../../../services/platform';
 import { useEndpoints } from '../../../state/app';
-import { Button, Card, Field, InlineError, Screen, Segmented, Stepper, Text } from '../../../ui/components';
+import { Button, Card, Field, InlineError, Segmented, Stepper, Text } from '../../../ui/components';
+import { SheetScreen } from '../../../ui/sheet-screen';
 import { useToast } from '../../../ui/toast';
 
 type Kind = 'DAMAGE' | 'LOSS' | 'USAGE' | 'INCREASE' | 'DECREASE';
@@ -46,7 +47,7 @@ export default function AdjustStock() {
   }
 
   return (
-    <Screen>
+    <SheetScreen title="Adjust stock">
       <Card tone="warn"><Text bold>This changes stock and is written to the audit log with your name and reason.</Text></Card>
       <Segmented<Kind> label="What happened?" value={kind} onChange={setKind} options={[
         { value: 'DAMAGE', label: 'Broken / damaged' }, { value: 'LOSS', label: 'Lost / stolen' }, { value: 'USAGE', label: 'Own use' },
@@ -57,6 +58,6 @@ export default function AdjustStock() {
       <Field label="Reason" icon="chatbox-ellipses-outline" {...form.field('reason')} maxLength={300} />
       {error ? <InlineError message={error} /> : null}
       <Button title="Save adjustment" onPress={() => void save()} busy={busy} />
-    </Screen>
+    </SheetScreen>
   );
 }

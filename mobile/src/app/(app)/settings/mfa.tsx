@@ -1,19 +1,23 @@
 import { useState } from 'react';
-import { Alert, Image, Linking, View } from 'react-native';
+import { Image, Linking, View } from 'react-native';
 import { RecoveryCodes } from '../../../features/RecoveryCodes';
 import { describeError } from '../../../lib/errors';
 import { digits, required, useForm } from '../../../lib/validation';
 import { useApp, useEndpoints } from '../../../state/app';
+import { useDialog } from '../../../ui/dialog';
 import { useAppStore } from '../../../state/store';
 import { Button, Card, Field, InlineError, Screen, SectionTitle, Text } from '../../../ui/components';
+import { useSecureScreen } from '../../../ui/secure-screen';
 import { space } from '../../../ui/theme';
 
 type Enrolment = { secret: string; otpauthUri: string; qrCodeDataUrl: string };
 
 export default function MfaSettings() {
+  useSecureScreen();
   const api = useEndpoints();
   const { services } = useApp();
   const user = useAppStore((s) => s.user);
+  const dialog = useDialog();
   const [enrolment, setEnrolment] = useState<Enrolment | null>(null);
   const enrol = useForm({ code: '' }, { code: [required('Enter the 6-digit code from your authenticator app.'), digits(6, 'The code is 6 digits, like 123456.')] });
   const verify = useForm({ password: '', code: '' }, { password: [required('Enter your password.')], code: [required('Enter the 6-digit code from your authenticator app.'), digits(6, 'The code is 6 digits, like 123456.')] });
@@ -78,7 +82,7 @@ export default function MfaSettings() {
             await api.account.mfaDisable(password, code.trim());
             await services.session.refreshProfile();
             setMode(null); verify.reset();
-            Alert.alert('Two-step sign-in is off');
+            void dialog.notify({ title: 'Two-step sign-in is off', message: 'You can turn it back on at any time from this screen.', tone: 'warn' });
           }); }} />
           <Button title="Cancel" variant="ghost" onPress={() => { setMode(null); setError(null); }} />
         </>

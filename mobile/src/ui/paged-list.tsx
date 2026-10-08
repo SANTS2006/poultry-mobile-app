@@ -4,6 +4,8 @@ import { FlatList, View } from 'react-native';
 import type { Page } from '../api/types';
 import { describeError } from '../lib/errors';
 import { Button, EmptyState, ErrorView, Skeleton } from './components';
+import { GlassBackdrop } from './glass';
+import { BrandLoading } from './loaders';
 import type { IconName } from './icon';
 import { StatusBanners } from './status-banners';
 import { space, useColors } from './theme';
@@ -11,7 +13,8 @@ import { space, useColors } from './theme';
 function SkeletonRows() {
   const c = useColors();
   return (
-    <View style={{ backgroundColor: c.card }}>
+    <View>
+      <BrandLoading label="Loading" />
       {[0, 1, 2, 3, 4].map((i) => (
         <View key={i} accessibilityElementsHidden style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderBottomWidth: 1, borderColor: c.border }}>
           <Skeleton height={40} width={40} radiusPx={12} />
@@ -46,6 +49,7 @@ export function PagedList<T extends { id: string }>({
   const items = q.data?.pages.flatMap((p) => p.items) ?? [];
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <GlassBackdrop />
       <StatusBanners />
       <FlatList
         data={items} keyExtractor={(i) => i.id} renderItem={({ item }) => renderItem(item)} keyboardShouldPersistTaps="handled"

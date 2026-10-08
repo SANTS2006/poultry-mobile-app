@@ -4,7 +4,10 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppProvider } from '../state/app';
 import { useAppStore } from '../state/store';
+import { DialogProvider } from '../ui/dialog';
 import { LiveNoticeToaster } from '../ui/live-notice';
+import { BusyOverlay } from '../ui/loaders';
+import { PrivacyShield } from '../ui/secure-screen';
 import { ToastProvider } from '../ui/toast';
 
 /** Route guard: signed-out users only see the (auth) screens; signed-in users only see the app (behind the biometric lock when enabled). */
@@ -26,7 +29,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <StatusBar style="auto" />
-        <AppProvider><ToastProvider><Routes /><LiveNoticeToaster /></ToastProvider></AppProvider>
+        <AppProvider><ToastProvider><DialogProvider><Routes /><LiveNoticeToaster /><BusyOverlay /><PrivacyShield /></DialogProvider></ToastProvider></AppProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

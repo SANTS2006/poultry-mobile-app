@@ -1,11 +1,14 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState, type ReactNode, type Ref } from 'react';
 import {
-  ActivityIndicator, Animated, Image, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text as RNText, TextInput, View,
+  Animated, Image, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text as RNText, TextInput, View,
   type StyleProp, type TextInputProps, type TextStyle, type ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Banner } from './banner';
+import { GlassBackdrop, GlassSurface, IS_IOS, continuous, cornerRadius } from './glass';
+import { tapHaptic } from './haptics';
+import { BrandLoading, DotsLoader } from './loaders';
 import { Icon, type IconName } from './icon';
 import { StatusBanners } from './status-banners';
 import { elevation, radius, space, TOUCH, typeScale, useColors, type Colors } from './theme';
@@ -48,6 +51,7 @@ export function Screen({ children, scroll = true, refreshing, onRefresh, padded 
   ) : <View style={{ flex: 1, padding: padded ? space.lg : 0, gap: space.lg }}>{children}</View>;
   return (
     <SafeAreaView edges={['left', 'right', 'bottom']} style={{ flex: 1, backgroundColor: c.bg }}>
+      <GlassBackdrop />
       <StatusBanners />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">{body}{footer}</KeyboardAvoidingView>
     </SafeAreaView>
@@ -57,8 +61,10 @@ export function Screen({ children, scroll = true, refreshing, onRefresh, padded 
 export function Card({ children, style, tone }: { children: ReactNode; style?: StyleProp<ViewStyle>; tone?: Tone }) {
   const c = useColors();
   const bg = tone ? c[`${tone}Soft` as const] : c.card;
+  // iOS: ordinary cards are glass (liquid glass on iOS 26, a blur material before); tinted status cards keep their solid colour so the message stays legible.
+  if (IS_IOS && !tone) return <GlassSurface radius={radius.lg} style={[{ padding: space.lg, gap: space.sm }, style]}>{children}</GlassSurface>;
   return (
-    <View style={[{ backgroundColor: bg, borderRadius: radius.lg, padding: space.lg, gap: space.sm, borderWidth: StyleSheet.hairlineWidth, borderColor: tone ? 'transparent' : c.border }, tone ? null : elevation.card, style]}>
+    <View style={[{ backgroundColor: bg, borderRadius: cornerRadius(radius.lg), ...continuous, padding: space.lg, gap: space.sm, borderWidth: StyleSheet.hairlineWidth, borderColor: tone ? 'transparent' : c.border }, tone ? null : elevation.card, style]}>
       {children}
     </View>
   );
@@ -94,13 +100,13 @@ export function Button({ title, onPress, variant = 'primary', busy, disabled, sm
   return (
     <Pressable
       testID={testID} accessibilityRole="button" accessibilityLabel={title} accessibilityState={{ disabled: !!off, busy: !!busy }} disabled={off} onPress={onPress}
-      onPressIn={() => spring(0.97)} onPressOut={() => spring(1)} android_ripple={{ color: `${fg}22` }}
+      onPressIn={() => { spring(0.97); tapHaptic(); }} onPressOut={() => spring(1)} android_ripple={{ color: `${fg}22` }}
     >
       <Animated.View style={{
-        transform: [{ scale }], minHeight: small ? 44 : TOUCH + 4, paddingHorizontal: small ? space.lg : space.xl, borderRadius: pill ? radius.pill : radius.md, backgroundColor: bg,
+        transform: [{ scale }], minHeight: small ? 44 : TOUCH + 4, paddingHorizontal: small ? space.lg : space.xl, borderRadius: pill ? radius.pill : cornerRadius(radius.md), ...continuous, backgroundColor: bg,
         opacity: off ? 0.5 : 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: space.sm,
       }}>
-        {busy ? <ActivityIndicator color={fg} /> : icon ? <Icon name={icon} size="sm" color={fg} /> : null}
+        {busy ? <DotsLoader color={fg} /> : icon ? <Icon name={icon} size="sm" color={fg} /> : null}
         <RNText style={[typeScale.bodyStrong, { color: fg }]}>{title}</RNText>
       </Animated.View>
     </Pressable>
@@ -292,7 +298,7 @@ export function ListRow({ title, subtitle, right, onPress, badge, icon }: { titl
     <Pressable
       accessibilityRole={onPress ? 'button' : undefined} disabled={!onPress} onPress={onPress} android_ripple={{ color: `${c.primary}1A` }}
       style={({ pressed }) => ({
-        minHeight: TOUCH + 12, paddingVertical: space.md, paddingHorizontal: space.lg, backgroundColor: pressed ? c.primarySoft : c.card,
+        minHeight: TOUCH + 12, paddingVertical: space.md, paddingHorizontal: space.lg, backgroundColor: pressed ? c.primarySoft : IS_IOS ? 'transparent' : c.card,
         borderBottomWidth: StyleSheet.hairlineWidth, borderColor: c.border, flexDirection: 'row', alignItems: 'center', gap: space.md,
       })}>
       {icon ? <IconTile name={icon} /> : null}
@@ -319,6 +325,7 @@ export function Skeleton({ height = 16, width = '100%', radiusPx = radius.sm }: 
   const c = useColors();
   const [o] = useState(() => new Animated.Value(0.55));
   useEffect(() => {
+    if (process.env.JEST_WORKER_ID !== undefined) return undefined; // tests: no endless timers
     const loop = Animated.loop(Animated.sequence([
       Animated.timing(o, { toValue: 1, duration: 750, useNativeDriver: true }), Animated.timing(o, { toValue: 0.55, duration: 750, useNativeDriver: true }),
     ]));
@@ -328,13 +335,13 @@ export function Skeleton({ height = 16, width = '100%', radiusPx = radius.sm }: 
   return <Animated.View accessibilityElementsHidden style={{ height, width, borderRadius: radiusPx, backgroundColor: c.skeleton, opacity: o }} />;
 }
 
-/** Placeholder shaped like a list/card while data loads. */
+/** The branded loader plus placeholder cards shaped like what is about to appear. */
 export function Loading({ label }: { label?: string }) {
   return (
     <View accessibilityRole="progressbar" accessibilityLabel={label ?? 'Loading'} style={{ gap: space.lg, paddingVertical: space.sm }}>
+      <BrandLoading label={label ?? 'Loading'} />
       <Card><Skeleton height={14} width="40%" /><Skeleton height={30} width="60%" /><Skeleton height={14} width="80%" /></Card>
       <Card><Skeleton height={14} width="50%" /><Skeleton height={14} width="90%" /><Skeleton height={14} width="70%" /></Card>
-      {label ? <Text variant="caption" muted style={{ textAlign: 'center' }}>{label}</Text> : null}
     </View>
   );
 }

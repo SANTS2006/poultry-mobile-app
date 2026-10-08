@@ -20,9 +20,8 @@ describe('design consistency', () => {
     expect(offenders.map((f) => path.relative(ROOT, f))).toEqual([]);
   });
 
-  it('does not import Alert for success confirmations (toasts are used) except where a blocking confirmation is intended', () => {
-    const allowed = new Set(['app/(app)/settings/index.tsx', 'app/(app)/settings/profile.tsx', 'app/(app)/admin/coop.tsx', 'app/(app)/sync.tsx', 'app/(app)/notifications/preferences.tsx', 'app/(app)/settings/sessions.tsx', 'app/(app)/settings/mfa.tsx', 'app/(app)/settings/password.tsx', 'app/(app)/admin/notification-settings.tsx', 'app/(app)/reports/[name].tsx']);
-    const offenders = screens.map((f) => path.relative(ROOT, f)).filter((f) => !allowed.has(f) && /\bAlert\b/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')));
+  it('never uses the system Alert: confirmations and notices go through the shared dialog (ui/dialog) and toasts', () => {
+    const offenders = screens.map((f) => path.relative(ROOT, f)).filter((f) => /\bAlert\b/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')));
     expect(offenders).toEqual([]);
   });
 });

@@ -7,6 +7,7 @@ import { useApp } from '../../state/app';
 import { useAuthFlow } from '../../state/auth-flow';
 import { AuthShell } from '../../ui/auth-shell';
 import { Button, Card, Field, InlineError, Text } from '../../ui/components';
+import { useSecureScreen } from '../../ui/secure-screen';
 import { space } from '../../ui/theme';
 
 /**
@@ -14,6 +15,7 @@ import { space } from '../../ui/theme';
  * choosing a new one here. Afterwards sign-in continues as usual (authenticator step or a session).
  */
 export default function FirstPassword() {
+  useSecureScreen();
   const router = useRouter();
   const { services } = useApp();
   const flow = useAuthFlow();

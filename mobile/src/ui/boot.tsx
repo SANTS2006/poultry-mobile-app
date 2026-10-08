@@ -1,6 +1,7 @@
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 import { BrandMark } from './brand';
 import { Text } from './components';
+import { EggSpinner } from './loaders';
 import { space, useColors } from './theme';
 
 export function BootSplash() {
@@ -8,7 +9,7 @@ export function BootSplash() {
   return (
     <View accessibilityRole="progressbar" accessibilityLabel="Starting" style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.bg, gap: space.xl }}>
       <BrandMark size={80} />
-      <ActivityIndicator color={c.primary} />
+      <EggSpinner label="Starting" />
     </View>
   );
 }

@@ -48,3 +48,21 @@ One rule, implemented once in `src/lib/validation.ts` (`useForm`):
 - once someone has typed something and left the field, wrong formats (email, phone, money, 6-digit codes, password policy…) are flagged and the message stays current as they edit;
 - pressing the main button checks everything, including required fields.
 The server re-validates all input; the phone-side rules only save a round trip. Text fields keep a constant 2 px border (only its colour changes) so focusing a field never shifts the layout.
+
+## Modals: which surface for what
+| Surface | Used for | How |
+|---|---|---|
+| **Bottom sheet** | add / edit forms of normal size: customer, coop, payment, stock adjustment, invite, profile, email, password | native `formSheet` presentation (swipe down or ✕ to close) via `SheetScreen` |
+| **Full-screen modal** | longer forms: record production, new sale, new expense | native `fullScreenModal` with a close button |
+| **Dialog** | confirmations, notices and small forms (the reason box, photo choice, "discard this record?") | `useDialog()` (`confirm`, `notify`, `ask`) and `DialogShell`; replaces the system alert everywhere (a test forbids `Alert`) |
+| **Toast** | quiet confirmations ("Saved") | `useToast()` |
+| **Busy overlay** | work that must not be interrupted (signing out) | `withBusyOverlay("Signing you out…", fn)` |
+
+## Charts (react-native-svg, no chart library)
+`ui/charts.tsx`: line/area (trend), bar, histogram (spread of daily output), pie/donut (share of a whole). Rules from the data-viz method: one axis, thin marks, 2 px gaps, categorical colours in a fixed order (validated: colour-blind separation and normal-vision floor pass in both modes; three light-mode slots are under 3:1 so every slice is also labelled with value and percentage), more than five categories fold into "Other", touch any point/bar/slice to read it, and every chart has a table view (`ChartCard`) and a screen-reader summary.
+
+## Loading and activity
+`EggSpinner` (bouncing egg; breathes instead when the phone has "reduce motion" on), `DotsLoader` (inside every busy button), `BrandLoading`/`Loading` (spinner + skeleton cards), `BusyOverlay`. The boot screen uses the same egg.
+
+## iOS look
+`ui/glass.tsx`: `GlassSurface` is the system **liquid glass** on iOS 26+, a system blur material on earlier iOS, and a plain elevated card on Android. Cards, stat tiles, dialogs, the profile menu, the busy overlay and the floating tab bar use it; a soft colour backdrop (`GlassBackdrop`) sits behind screens so the glass has something to refract. iOS also gets continuous (squircle) corners, light haptics on buttons/tabs/toggles, native sheets, and the system's own navigation bar (no fixed header colour). **Unverified**: none of this has been seen on a device; the glass effect needs iOS 26 and a development or store build (Expo Go on an older iOS shows the blur fallback).
