@@ -3,6 +3,6 @@ import type { PushRequest, PushResponse, ReferenceData, SyncTransport } from './
 
 export class HttpSyncTransport implements SyncTransport {
   constructor(private readonly api: ApiClient) {}
-  push(req: PushRequest): Promise<PushResponse> { return this.api.request<PushResponse>('POST', '/v1/sync/push', req); }
+  push(req: PushRequest): Promise<PushResponse> { return this.api.request<PushResponse>('POST', '/v1/sync/push', req, 90_000); }
   reference(since?: string): Promise<ReferenceData> { return this.api.request<ReferenceData>('GET', `/v1/sync/reference${since ? `?since=${encodeURIComponent(since)}` : ''}`); }
 }

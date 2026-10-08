@@ -66,7 +66,7 @@ export class SyncEngine {
     this.now = deps.now ?? (() => new Date());
     this.newId = deps.newId ?? (() => globalThis.crypto.randomUUID());
     this.random = deps.random ?? Math.random;
-    this.batchSize = deps.batchSize ?? 25;
+    this.batchSize = deps.batchSize ?? 5; // small batches finish inside the request time limit even when the server or the link is slow, and progress is saved after each one
     this.maxBackoffMs = deps.maxBackoffMs ?? 15 * 60_000;
     this.retentionMs = deps.syncedRetentionMs ?? 7 * 24 * 3600_000;
   }

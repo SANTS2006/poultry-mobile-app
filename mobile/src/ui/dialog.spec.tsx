@@ -70,6 +70,19 @@ describe('dialogs', () => {
   });
 });
 
+describe('dialog surface (regression: text must stay readable and every corner round)', () => {
+  const flat = (style: unknown): Record<string, unknown> => Object.assign({}, ...[style].flat(5).filter(Boolean) as object[]);
+  it('has a solid background and clips its content to rounded corners', () => {
+    const { r, api } = setup();
+    act(() => { void api().notify({ title: 'Records not sent yet', message: 'Two records are waiting.', tone: 'warn' }); });
+    const rounded = r.root.findAll((n) => { const st = flat(n.props.style); return typeof st.borderRadius === 'number' && st.overflow === 'hidden'; });
+    expect(rounded.length).toBeGreaterThan(0);
+    const surface = flat(rounded[0].props.style);
+    expect(surface.backgroundColor).toBeTruthy(); // not transparent: the page behind must not show through the words
+    expect(surface.borderRadius as number).toBeGreaterThanOrEqual(20);
+  });
+});
+
 describe('loaders', () => {
   it('render with accessible labels', () => {
     let r!: ReactTestRenderer;

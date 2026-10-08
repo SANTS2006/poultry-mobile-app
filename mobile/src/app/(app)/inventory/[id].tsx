@@ -5,7 +5,8 @@ import { describeError } from '../../../lib/errors';
 import { eggBreakdown, formatDateTime, formatInt } from '../../../lib/format';
 import { useEndpoints } from '../../../state/app';
 import { useCan } from '../../../state/store';
-import { Badge, Button, Card, ErrorView, IconTile, Loading, Row, Screen, SectionHeader, Text } from '../../../ui/components';
+import { Badge, Button, Card, ErrorView, IconTile, Loading, Row, SectionHeader, Text } from '../../../ui/components';
+import { SheetScreen } from '../../../ui/sheet-screen';
 import { space, useColors } from '../../../ui/theme';
 
 const LABEL: Record<string, string> = {
@@ -26,13 +27,13 @@ export default function StockMovement() {
   const canProd = useCan('production.read');
   const q = useQuery({ queryKey: ['inventory', 'tx', id], queryFn: () => api.inventory.transaction(id) });
   const t = q.data;
-  if (q.isLoading) return <Screen><Loading /></Screen>;
-  if (!t) return <Screen><ErrorView message={describeError(q.error)} onRetry={() => void q.refetch()} /></Screen>;
+  if (q.isLoading) return <SheetScreen title="Stock movement"><Loading /></SheetScreen>;
+  if (!t) return <SheetScreen title="Stock movement"><ErrorView message={describeError(q.error)} onRetry={() => void q.refetch()} /></SheetScreen>;
   const up = t.quantityEggs > 0;
   const source = canSales && t.sourceType === 'sale' && t.sourceId ? { path: `/sales/${t.sourceId}`, label: 'Open the sale' }
     : canProd && t.sourceType === 'production_record' && t.sourceId ? { path: `/production/${t.sourceId}`, label: 'Open the production record' } : null;
   return (
-    <Screen refreshing={q.isRefetching} onRefresh={() => void q.refetch()}>
+    <SheetScreen title="Stock movement" refreshing={q.isRefetching} onRefresh={() => void q.refetch()}>
       <Card style={{ gap: space.lg }}>
         <Row style={{ gap: space.md }}>
           <IconTile name={up ? 'arrow-up-circle-outline' : 'arrow-down-circle-outline'} tone={up ? 'primary' : 'accent'} />
@@ -61,7 +62,7 @@ export default function StockMovement() {
 
       {t.needsReview ? <Card tone="warn"><Text>This entry came from the Excel import and was flagged for a person to check.</Text></Card> : null}
       {source ? <Button title={source.label} icon="open-outline" onPress={() => router.push(source.path as never)} /> : null}
-    </Screen>
+    </SheetScreen>
   );
 }
 

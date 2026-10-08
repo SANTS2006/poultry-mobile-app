@@ -12,6 +12,7 @@ import { getServices, refreshReference, type Services } from '../services/contai
 import { useLiveNotice } from './live-notice';
 import { loadThemeMode } from './theme-pref';
 import { configureForegroundNotifications, loadNotifications, registerForPush, routeForNotification } from '../services/push';
+import { clearPersistedQueries, restoreQueries, startPersistingQueries } from '../services/query-persist';
 import { RealtimeClient, type SocketFactory } from '../services/realtime';
 import { AuthRequiredError, HttpError } from '../sync/types';
 import { BootError, BootSplash } from '../ui/boot';
@@ -34,6 +35,7 @@ function makeQueryClient(): QueryClient {
     defaultOptions: {
       queries: {
         staleTime: 30_000,
+        gcTime: 24 * 3600_000, // keep answers for a day so screens open instantly from memory
         // Show what we already have while offline instead of a spinner; realtime and refetch-on-reconnect bring it up to date.
         networkMode: 'offlineFirst',
         retry: (count, e) => !(e instanceof AuthRequiredError) && !(e instanceof HttpError && e.status >= 400 && e.status < 500) && count < 2,
@@ -64,8 +66,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         let realtime: RealtimeClient | null = null;
         let stopAuto: (() => void) | null = null;
+        let stopPersist: (() => void) | null = null;
 
-        const stopLive = () => { realtime?.stop(); realtime = null; stopAuto?.(); stopAuto = null; };
+        const stopLive = () => { realtime?.stop(); realtime = null; stopAuto?.(); stopAuto = null; stopPersist?.(); stopPersist = null; };
         const startLive = async () => {
           stopLive();
           const user = services.session.user;
@@ -80,6 +83,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             },
           });
           realtime.start();
+          stopPersist = startPersistingQueries(queryClient, services.storage, user.id);
+          void queryClient.prefetchQuery({ queryKey: ['dashboard'], queryFn: () => api.dashboard() }).catch(() => undefined); // warm the home screen while the app is still drawing
           stopAuto = services.engine.startAutoSync();
           void refreshReference(services);
           void enablePushOnce(api, services.secure); // asks once, right after the first sign-in on this phone; Settings can ask again
@@ -89,7 +94,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         unsubs.push(services.session.subscribe(({ status, user }) => {
           store.getState().setSession(status, user);
           if (status === 'signed_in') void startLive();
-          else { stopLive(); if (status === 'signed_out') queryClient.clear(); }
+          else { stopLive(); if (status === 'signed_out') { queryClient.clear(); void clearPersistedQueries(services.storage); } }
         }));
         unsubs.push(services.engine.subscribe((e) => {
           if (e.type === 'summary') store.getState().setSync(e.summary);
@@ -105,6 +110,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         await services.session.restore();
         if (canBio && services.session.status === 'signed_in') store.getState().setLocked(shouldLock({ enabled: true, backgroundedAt: null, now: Date.now(), coldStart: true }));
+        if (services.session.status === 'signed_in' && services.session.user) await restoreQueries(queryClient, services.storage, services.session.user.id); // first screen opens with the last known numbers
         if (cancelled) return;
         setCtx({ services, api, queryClient });
         unsubs.push(() => stopLive());

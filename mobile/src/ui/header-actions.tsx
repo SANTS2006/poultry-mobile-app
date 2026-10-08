@@ -52,7 +52,7 @@ export function ProfileButton({ size = 34 }: { size?: number }) {
       <Modal visible={open} transparent animationType="fade" onRequestClose={close} statusBarTranslucent>
         <Pressable accessibilityLabel="Close menu" style={{ flex: 1, backgroundColor: c.overlay }} onPress={close}>
           <Pressable accessibilityViewIsModal onPress={() => undefined} style={{ position: 'absolute', top: insets.top + 56, right: space.lg, width: 280 }}>
-            <GlassSurface radius={radius.lg} style={elevation.float}>
+            <GlassSurface solid radius={radius.lg} style={elevation.float}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg }}>
               <Avatar name={user?.fullName ?? '?'} uri={user?.avatar} size={48} />
               <View style={{ flex: 1 }}>

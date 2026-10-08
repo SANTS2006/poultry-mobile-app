@@ -7,7 +7,8 @@ import { useEndpoints } from '../../../state/app';
 import { useCan } from '../../../state/store';
 import { ReasonModal } from '../../../ui/reason-modal';
 import { useToast } from '../../../ui/toast';
-import { Badge, Button, InlineError, Card, ErrorView, Field, Loading, Row, Screen, SectionTitle, Stepper, Text } from '../../../ui/components';
+import { Badge, Button, InlineError, Card, ErrorView, Field, Loading, Row, SectionTitle, Stepper, Text } from '../../../ui/components';
+import { SheetScreen } from '../../../ui/sheet-screen';
 import type { Unit } from '../../../api/types';
 
 const UNIT_LABEL: Record<Unit, string> = { CARTON: 'Cartons', CRATE: 'Crates', EGG: 'Single eggs' };
@@ -51,11 +52,11 @@ export default function ProductionDetail() {
     }
   }
 
-  if (q.isLoading) return <Screen><Loading /></Screen>;
-  if (!r) return <Screen><ErrorView message={describeError(q.error)} onRetry={() => void q.refetch()} /></Screen>;
+  if (q.isLoading) return <SheetScreen title="Production record"><Loading /></SheetScreen>;
+  if (!r) return <SheetScreen title="Production record"><ErrorView message={describeError(q.error)} onRetry={() => void q.refetch()} /></SheetScreen>;
 
   return (
-    <Screen refreshing={q.isRefetching} onRefresh={() => void q.refetch()}>
+    <SheetScreen title="Production record" refreshing={q.isRefetching} onRefresh={() => void q.refetch()}>
       <Card>
         <Row style={{ justifyContent: 'space-between' }}><Text size="title" bold>{formatInt(r.totalEggs)} eggs</Text>{r.status === 'VOIDED' ? <Badge tone="danger" label="Voided" /> : r.needsReview ? <Badge tone="warn" label="Needs review" /> : null}</Row>
         <Text muted>{eggBreakdown(r.totalEggs)}</Text>
@@ -91,6 +92,6 @@ export default function ProductionDetail() {
         onCancel={() => setVoiding(false)}
         onConfirm={async (text) => { setVoiding(false); await run(() => api.production.void(r.id, text).then(() => router.back()), 'Record voided'); }}
       />
-    </Screen>
+    </SheetScreen>
   );
 }

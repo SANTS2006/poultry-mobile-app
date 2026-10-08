@@ -7,13 +7,14 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export class ApiClient {
   constructor(
     private readonly baseUrl: string, private readonly tokens: TokenManager, private readonly fetchImpl: FetchLike,
-    private readonly deviceHeaders: Record<string, string> = {}, private readonly timeoutMs = 20_000,
+    private readonly deviceHeaders: Record<string, string> = {}, private readonly timeoutMs = 30_000,
   ) {}
 
-  async request<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
+  /** `timeoutMs` overrides the default for one call (a sync push of several records on a slow link legitimately takes longer). */
+  async request<T>(method: HttpMethod, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
     let token = await this.tokens.getAccessToken(); // may throw AuthRequiredError / NetworkError
     for (let attempt = 0; attempt < 2; attempt++) {
-      const res = await this.send(method, path, token, body);
+      const res = await this.send(method, path, token, body, timeoutMs);
       if (res.status === 401 && attempt === 0) { token = await this.tokens.refresh(); continue; }
       if (res.status === 401) { await this.tokens.clear(); throw new AuthRequiredError(); }
       if (!res.ok) throw new HttpError(res.status, await res.json().catch(() => null));
@@ -36,9 +37,9 @@ export class ApiClient {
     throw new AuthRequiredError();
   }
 
-  private async send(method: string, path: string, token: string, body?: unknown) {
+  private async send(method: string, path: string, token: string, body?: unknown, timeoutMs = this.timeoutMs) {
     const ctl = typeof AbortController !== 'undefined' ? new AbortController() : undefined;
-    const timer = ctl ? setTimeout(() => ctl.abort(), this.timeoutMs) : undefined;
+    const timer = ctl ? setTimeout(() => ctl.abort(), timeoutMs) : undefined;
     try {
       return await this.fetchImpl(`${this.baseUrl}${path}`, {
         method, signal: ctl?.signal,

@@ -35,7 +35,7 @@ export function DialogShell({ visible, onClose, tone = 'info', icon, title, mess
       <Pressable accessibilityLabel="Close dialog" onPress={dismissable ? onClose : undefined} style={{ flex: 1, backgroundColor: c.overlay, alignItems: 'center', justifyContent: 'center', padding: space.xl }}>
         <Animated.View accessibilityViewIsModal style={{ width: Math.min(360, width - space.xl * 2), opacity: enter, transform: [{ scale: enter.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }] }}>
           <Pressable onPress={() => undefined}>
-            <GlassSurface radius={radius.lg + 8} style={{ padding: space.xl, gap: space.lg, alignItems: 'stretch', backgroundColor: undefined }}>
+            <GlassSurface solid radius={radius.lg + 8} style={{ padding: space.xl, gap: space.lg, alignItems: 'stretch' }}>
               <View style={{ alignItems: 'center', gap: space.md }}>
                 <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}><Icon name={icon ?? TONE_ICON[tone]} size={34} color={fg} /></View>
                 <Text variant="title" accessibilityRole="header" style={{ textAlign: 'center' }}>{title}</Text>

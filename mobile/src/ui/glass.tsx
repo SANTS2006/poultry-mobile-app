@@ -23,29 +23,32 @@ export const continuous = IS_IOS ? ({ borderCurve: 'continuous' } as const) : ({
  *  • iOS 26+: the system liquid-glass effect (refracts what is behind it);
  *  • iOS 18 and earlier: a system blur material;
  *  • Android: an ordinary elevated card (no glass there).
- * Content goes inside as usual. `radius` is the corner radius.
+ * Content goes inside as usual. `radius` is the corner radius; every corner is rounded and clips what is inside it. `solid` puts a nearly opaque
+ * card colour under the glass, for surfaces that carry text over busy content (dialogs, menus).
  */
-export function GlassSurface({ children, style, radius = radii.lg, tint, interactive }: { children?: ReactNode; style?: StyleProp<ViewStyle>; radius?: number; tint?: string; interactive?: boolean }) {
+export function GlassSurface({ children, style, radius = radii.lg, tint, interactive, solid }: { children?: ReactNode; style?: StyleProp<ViewStyle>; radius?: number; tint?: string; interactive?: boolean; solid?: boolean }) {
   const c = useColors();
   const dark = useIsDark();
   const r = cornerRadius(radius);
+  const backing = solid ? { backgroundColor: `${c.card}F2` } : null; // F2 = 95 % opaque
   if (hasLiquidGlass()) {
     return (
-      <GlassView glassEffectStyle="regular" colorScheme={dark ? 'dark' : 'light'} tintColor={tint} isInteractive={interactive} style={[{ borderRadius: r, overflow: 'hidden', ...continuous }, style]}>
+      <GlassView glassEffectStyle="regular" colorScheme={dark ? 'dark' : 'light'} tintColor={tint} isInteractive={interactive} style={[{ borderRadius: r, overflow: 'hidden', ...continuous }, backing, style]}>
         {children}
       </GlassView>
     );
   }
   if (IS_IOS) {
     return (
-      <View style={[{ borderRadius: r, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: c.border, ...continuous }, style]}>
+      <View style={[{ borderRadius: r, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: c.border, ...continuous }, backing, style]}>
         <BlurView intensity={55} tint={dark ? 'systemThickMaterialDark' : 'systemThickMaterialLight'} style={StyleSheet.absoluteFill} />
         {tint ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: tint, opacity: 0.18 }]} /> : null}
         {children}
       </View>
     );
   }
-  return <View style={[{ borderRadius: r, backgroundColor: c.card, borderWidth: StyleSheet.hairlineWidth, borderColor: c.border }, elevation.card, style]}>{children}</View>;
+  // overflow: hidden is what makes every corner round: without it, rows inside (with their own background) poke out of the bottom corners.
+  return <View style={[{ borderRadius: r, backgroundColor: c.card, borderWidth: StyleSheet.hairlineWidth, borderColor: c.border, overflow: 'hidden' }, elevation.card, style]}>{children}</View>;
 }
 
 /**

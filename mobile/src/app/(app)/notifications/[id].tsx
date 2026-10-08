@@ -7,7 +7,8 @@ import { formatDateTime } from '../../../lib/format';
 import { categoryName, CATEGORY_ICON } from '../../../lib/notification-meta';
 import { relatedRoute } from '../../../services/push';
 import { useEndpoints } from '../../../state/app';
-import { Badge, Button, Card, ErrorView, IconTile, Loading, Row, Screen, Text } from '../../../ui/components';
+import { Badge, Button, Card, ErrorView, IconTile, Loading, Row, Text } from '../../../ui/components';
+import { SheetScreen } from '../../../ui/sheet-screen';
 import { space } from '../../../ui/theme';
 
 /** One notification in full. Opening it marks it read, which updates the bell's count everywhere. */
@@ -26,11 +27,11 @@ export default function NotificationDetail() {
     void api.notifications.opened(id).catch(() => undefined);
   }, [unread, id, api, qc]);
 
-  if (q.isLoading) return <Screen><Loading /></Screen>;
-  if (!n) return <Screen><ErrorView message={describeError(q.error)} onRetry={() => void q.refetch()} /></Screen>;
+  if (q.isLoading) return <SheetScreen title="Notification"><Loading /></SheetScreen>;
+  if (!n) return <SheetScreen title="Notification"><ErrorView message={describeError(q.error)} onRetry={() => void q.refetch()} /></SheetScreen>;
   const related = relatedRoute(n);
   return (
-    <Screen refreshing={q.isRefetching} onRefresh={() => void q.refetch()}>
+    <SheetScreen title="Notification" refreshing={q.isRefetching} onRefresh={() => void q.refetch()}>
       <Card style={{ gap: space.lg }}>
         <Row style={{ gap: space.md }}>
           <IconTile name={CATEGORY_ICON[n.category] ?? 'notifications-outline'} />
@@ -46,6 +47,6 @@ export default function NotificationDetail() {
 
       {related ? <Button title={related.label} icon="open-outline" onPress={() => router.push(related.path as never)} /> : null}
       <Button title="Notification settings" icon="options-outline" variant="secondary" onPress={() => router.push('/notifications/preferences')} />
-    </Screen>
+    </SheetScreen>
   );
 }

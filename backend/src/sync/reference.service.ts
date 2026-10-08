@@ -35,35 +35,39 @@ export class ReferenceService {
         salesBackdateDays: await this.settings.get('sales.backdateDays'), creditEnabled: await this.settings.get('sales.creditEnabled'),
       },
     };
+    // Each block is independent, so they all run at the same time (the whole answer then takes about one database round trip, not ten).
+    const jobs: Promise<void>[] = [];
     if (has('production.read') || has('production.create')) {
-      out.coops = await this.prisma.coop.findMany({ where: { farmId, active: true, deletedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
-      out.shifts = (await this.prisma.shift.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' }, select: { code: true, name: true } }));
+      jobs.push(this.prisma.coop.findMany({ where: { farmId, active: true, deletedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true } }).then((v) => { out.coops = v; }));
+      jobs.push(this.prisma.shift.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' }, select: { code: true, name: true } }).then((v) => { out.shifts = v; }));
     }
     if (has('production.create') || has('sales.create') || has('production.read') || has('sales.read')) {
-      out.units = [...(await this.pricing.unitsFor()).values()].map((u) => ({ code: u.code, eggsPerUnit: u.eggsPerUnit }));
+      jobs.push(this.pricing.unitsFor().then((m) => { out.units = [...m.values()].map((u) => ({ code: u.code, eggsPerUnit: u.eggsPerUnit })); }));
     }
     if (has('sales.read') || has('sales.create')) {
       const now = new Date();
-      const units = await this.prisma.productUnit.findMany();
-      out.prices = (await Promise.all(units.map(async (u) => {
-        const p = await this.prisma.price.findFirst({ where: { productUnitId: u.id, effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }, orderBy: { effectiveFrom: 'desc' } });
-        return p ? { unit: u.code, amount: p.amount.toString() } : null;
-      }))).filter(Boolean); // for display/estimates only: the server always prices the sale itself
+      // one query for every unit's current price (it used to be one query per unit)
+      jobs.push(this.prisma.price.findMany({
+        where: { effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }, orderBy: { effectiveFrom: 'desc' }, include: { productUnit: { select: { code: true } } },
+      }).then((rows) => {
+        const seen = new Set<string>();
+        out.prices = rows.filter((p) => !seen.has(p.productUnitId) && !!seen.add(p.productUnitId)).map((p) => ({ unit: p.productUnit.code, amount: p.amount.toString() })); // display/estimates only: the server always prices the sale itself
+      }));
     }
-    if (has('inventory.read')) out.inventory = await this.inventory.snapshot(farmId);
+    if (has('inventory.read')) jobs.push(this.inventory.snapshot(farmId).then((v) => { out.inventory = v; }));
     if (has('customers.read') || has('sales.create')) {
-      const rows = await this.prisma.customer.findMany({
+      jobs.push(this.prisma.customer.findMany({
         where: sinceDate ? { updatedAt: { gt: sinceDate } } : { deletedAt: null },
         select: { id: true, name: true, phone: true, type: true, version: true, deletedAt: true, clientId: true }, orderBy: { name: 'asc' },
-      });
-      out.customers = rows.map((c) => (c.deletedAt ? { id: c.id, deleted: true } : { id: c.id, name: c.name, phone: c.phone, type: c.type, version: c.version, clientId: c.clientId }));
+      }).then((rows) => { out.customers = rows.map((c) => (c.deletedAt ? { id: c.id, deleted: true } : { id: c.id, name: c.name, phone: c.phone, type: c.type, version: c.version, clientId: c.clientId })); }));
     }
     if (has('expenses.create') || has('expenses.read')) {
-      out.expenseCategories = await this.prisma.expenseCategory.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' }, select: { code: true, name: true } });
+      jobs.push(this.prisma.expenseCategory.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' }, select: { code: true, name: true } }).then((v) => { out.expenseCategories = v; }));
     }
     if (has('suppliers.read')) {
-      out.suppliers = await this.prisma.supplier.findMany({ where: { active: true, deletedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
+      jobs.push(this.prisma.supplier.findMany({ where: { active: true, deletedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true } }).then((v) => { out.suppliers = v; }));
     }
+    await Promise.all(jobs);
     return out;
   }
 }

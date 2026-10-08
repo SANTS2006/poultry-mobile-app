@@ -46,7 +46,8 @@ describe('Backend foundation (e2e)', () => {
 
   it('liveness and readiness (real DB round-trip)', async () => {
     await request(app.getHttpServer()).get('/health/live').expect(200, { status: 'ok' });
-    await request(app.getHttpServer()).get('/health/ready').expect(200, { status: 'ok' });
+    const ready = await request(app.getHttpServer()).get('/health/ready').expect(200);
+    expect(ready.body).toEqual({ status: 'ok', dbRoundTripMs: expect.any(Number) });
   });
 
   it('sets security headers and hides framework info', async () => {

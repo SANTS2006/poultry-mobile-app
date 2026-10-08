@@ -113,7 +113,7 @@ function BusyCard({ message }: { message: string }) {
   useEffect(() => { Animated.timing(fade, { toValue: 1, duration: 180, useNativeDriver: NATIVE }).start(); }, [fade]);
   return (
     <Animated.View accessibilityViewIsModal accessibilityLiveRegion="polite" style={[StyleSheet.absoluteFill, { opacity: fade, backgroundColor: c.overlay, alignItems: 'center', justifyContent: 'center', zIndex: 1000, elevation: 1000 }]}>
-      <GlassSurface radius={radius.lg + 4} style={{ paddingVertical: space.xl, paddingHorizontal: space.xxl, alignItems: 'center', gap: space.md, minWidth: 220 }}>
+      <GlassSurface solid radius={radius.lg + 4} style={{ paddingVertical: space.xl, paddingHorizontal: space.xxl, alignItems: 'center', gap: space.md, minWidth: 220 }}>
         <EggSpinner size={48} label={message} />
         <Text variant="bodyStrong" style={{ textAlign: 'center' }}>{message}</Text>
       </GlassSurface>

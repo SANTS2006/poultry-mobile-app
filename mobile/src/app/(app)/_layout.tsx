@@ -21,22 +21,22 @@ export default function AppLayout() {
     }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="production/new" options={{ ...modal, title: 'Record production' }} />
-      <Stack.Screen name="production/[id]" options={{ title: 'Production record' }} />
+      <Stack.Screen name="production/[id]" options={sheet} />
       <Stack.Screen name="sales/new" options={{ ...modal, title: 'New sale' }} />
-      <Stack.Screen name="sales/[id]" options={{ title: 'Sale' }} />
+      <Stack.Screen name="sales/[id]" options={{ ...modal, title: 'Sale' }} />
       <Stack.Screen name="customers/index" options={{ title: 'Customers' }} />
       <Stack.Screen name="customers/new" options={sheet} />
-      <Stack.Screen name="customers/[id]" options={{ title: 'Customer' }} />
+      <Stack.Screen name="customers/[id]" options={{ ...modal, title: 'Customer' }} />
       <Stack.Screen name="expenses/index" options={{ title: 'Expenses' }} />
       <Stack.Screen name="expenses/new" options={{ ...modal, title: 'New expense' }} />
       <Stack.Screen name="inventory/adjust" options={sheet} />
       <Stack.Screen name="inventory/history" options={{ title: 'Stock history' }} />
-      <Stack.Screen name="inventory/[id]" options={{ title: 'Stock movement' }} />
+      <Stack.Screen name="inventory/[id]" options={sheet} />
       <Stack.Screen name="payments/new" options={sheet} />
       <Stack.Screen name="reports/index" options={{ title: 'Reports' }} />
       <Stack.Screen name="reports/[name]" options={{ title: 'Report' }} />
       <Stack.Screen name="notifications/index" options={{ title: 'Notifications' }} />
-      <Stack.Screen name="notifications/[id]" options={{ title: 'Notification' }} />
+      <Stack.Screen name="notifications/[id]" options={sheet} />
       <Stack.Screen name="notifications/preferences" options={{ title: 'Notification settings' }} />
       <Stack.Screen name="sync" options={{ title: 'Sync' }} />
       <Stack.Screen name="settings/index" options={{ title: 'Settings' }} />
@@ -47,7 +47,7 @@ export default function AppLayout() {
       <Stack.Screen name="settings/sessions" options={{ title: 'Devices and sessions' }} />
       <Stack.Screen name="admin/index" options={{ title: 'Administration' }} />
       <Stack.Screen name="admin/users" options={{ title: 'Users' }} />
-      <Stack.Screen name="admin/user/[id]" options={{ title: 'User' }} />
+      <Stack.Screen name="admin/user/[id]" options={{ ...modal, title: 'User' }} />
       <Stack.Screen name="admin/invite" options={sheet} />
       <Stack.Screen name="admin/audit" options={{ title: 'Audit log' }} />
       <Stack.Screen name="admin/coops" options={{ title: 'Coops' }} />
