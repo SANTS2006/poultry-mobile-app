@@ -93,7 +93,7 @@ export type Env = z.infer<typeof schema>;
 export function parseEnv(raw: Record<string, unknown>): Env {
   // A blank line in .env ("PUSH_PROVIDER=") means "not set", not an invalid empty value.
   const cleaned = { ...raw };
-  for (const k of ['PUSH_PROVIDER', 'THROTTLE_OFF', 'DB_KEEPALIVE_SECONDS']) if (cleaned[k] === '') delete cleaned[k];
+  for (const k of ['PUSH_PROVIDER', 'THROTTLE_OFF', 'DB_KEEPALIVE_SECONDS', 'BACKUP_ENABLED', 'BACKUP_STORAGE', 'BACKUP_STALE_HOURS', 'BACKUP_S3_REGION', 'BACKUP_S3_PREFIX', 'BACKUP_LOCAL_DIR']) if (cleaned[k] === '') delete cleaned[k];
   const result = schema.safeParse(cleaned);
   if (!result.success) {
     const lines = result.error.issues.map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`);
