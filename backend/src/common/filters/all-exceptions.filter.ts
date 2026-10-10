@@ -4,6 +4,9 @@ import type { Request, Response } from 'express';
 import { PinoLogger } from 'nestjs-pino';
 import { GENERIC_ERROR_MESSAGE } from '../messages';
 
+/** Prisma codes meaning "database unreachable / timed out / pool exhausted". */
+const DB_UNAVAILABLE = ['P1001', 'P1002', 'P1008', 'P1017', 'P2024'];
+
 interface ErrorBody {
   statusCode: number;
   error: string;
@@ -27,7 +30,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const res = http.getResponse<Response>();
     const { status, message, error } = this.toClientError(exception);
 
-    if (status >= 500) {
+    if (status === 503) {
+      this.logger.warn({ requestId: req.id, code: (exception as { code?: string }).code }, 'Database temporarily unreachable');
+    } else if (status >= 500) {
       this.logger.error({ err: exception, requestId: req.id }, 'Unhandled server error');
     } else if (status === 401 || status === 403) {
       this.logger.warn({ requestId: req.id, status, path: String(req.url).split('?')[0] }, 'Access denied');
@@ -47,6 +52,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = (response as { message: string | string[] }).message;
       }
       return { status, message, error: HttpStatus[status] ?? 'Error' };
+    }
+    // The database could not be reached or the connection pool is exhausted: a temporary condition, not a bug. 503 tells the app to retry.
+    if (exception instanceof Prisma.PrismaClientInitializationError || (exception instanceof Prisma.PrismaClientKnownRequestError && DB_UNAVAILABLE.includes(exception.code))) {
+      return { status: 503, message: 'The server cannot reach its database right now. Please try again in a moment.', error: 'Service Unavailable' };
     }
     if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       // Map by code only; never expose meta (contains table/column/constraint names).
