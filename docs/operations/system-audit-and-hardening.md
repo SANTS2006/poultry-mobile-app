@@ -12,7 +12,7 @@ totals, stock and permissions are computed server-side; the app only sends inten
 | # | Severity | Finding | Status |
 |---|---|---|---|
 | 1 | **Critical** | No automated, off-server, encrypted backup; recovery was manual scripts only; nobody was told if a backup failed | **Fixed** — in-app daily backups, encryption, off-site storage support, verification, alerts, Super Admin dashboard, guarded recovery (this change). *Off-site storage and restore on your hosts: not verified until you configure the bucket and recovery server.* |
-| 2 | High | The API host needs `pg_dump`/`pg_restore`, otherwise any backup fails | **Documented + detected**: the Backups screen warns when `pg_dump` is missing and the error says how to fix it. Install `postgresql-client-17` on the host (the project does not use Docker). |
+| 2 | High | The API host needs `pg_dump`/`pg_restore`, otherwise any backup fails | **Documented + detected**: the Backups screen warns when `pg_dump` is missing and the error says how to fix it. Install `postgresql-client-17` on the host. |
 | 3 | High | No graceful shutdown (`enableShutdownHooks`) and no HTTP request/headers timeouts: deploys could cut in-flight requests; stalled clients held sockets | **Fixed** (`main.ts`) |
 | 4 | Medium | The audit trail had no record of backup/recovery actions | **Fixed** (`backup.*`, `recovery.*` audit actions, hash-chained) |
 | 5 | Medium | `SyncOperation` (idempotency) rows never expire | **By design, documented.** Keeping them forever is what makes a very late retry safe. Table grows ~1 row per offline-created record (small). Revisit when it exceeds ~10 M rows. |

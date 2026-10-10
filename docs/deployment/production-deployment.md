@@ -1,6 +1,6 @@
 # Production deployment (Phase 13)
 
-Status of what is verified: the build and start steps (`npm ci` → `npm run build` → `node dist/main.js` → health checks) were run in a sandbox, but **nothing has been deployed to Neon or any host**. Treat the first staging deploy as the real test. The project does not use Docker.
+Status of what is verified: the build and start steps (`npm ci` → `npm run build` → `node dist/main.js` → health checks) were run in a sandbox, but **nothing has been deployed to Neon or any host**. Treat the first staging deploy as the real test.
 
 ## Topology
 ```

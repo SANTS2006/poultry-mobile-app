@@ -10,7 +10,7 @@ function lanAddress() {
   const candidates = [];
   for (const [name, list] of Object.entries(os.networkInterfaces())) {
     for (const i of list ?? []) {
-      if (i.family === 'IPv4' && !i.internal && !/^(docker|br-|veth|vmnet|vboxnet|utun|lo)/i.test(name)) candidates.push(i.address);
+      if (i.family === 'IPv4' && !i.internal && !/^(br-|veth|vmnet|vboxnet|utun|lo)/i.test(name)) candidates.push(i.address);
     }
   }
   // prefer typical home/office ranges
