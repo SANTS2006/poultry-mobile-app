@@ -19,7 +19,7 @@ jobs:
       DIRECT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/makarifor_test
     steps:
       - uses: actions/checkout@v4
-      # PostgreSQL 16 is preinstalled on ubuntu runners; start it and create the test database (no containers involved).
+      # PostgreSQL 16 is preinstalled on ubuntu runners; start it and create the test database.
       - name: Start PostgreSQL
         working-directory: .
         run: |
