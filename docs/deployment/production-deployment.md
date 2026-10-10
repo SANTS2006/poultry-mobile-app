@@ -1,11 +1,10 @@
 # Production deployment (Phase 13)
 
-Status of what is verified: the API image steps were simulated (build → prune dev dependencies → start `dist/main.js` → health checks) but **`docker build` itself was not run**
-(no Docker daemon in the build sandbox), and **nothing has been deployed to Neon or any host**. Treat the first staging deploy as the real test.
+Status of what is verified: the build and start steps (`npm ci` → `npm run build` → `node dist/main.js` → health checks) were run in a sandbox, but **nothing has been deployed to Neon or any host**. Treat the first staging deploy as the real test. The project does not use Docker.
 
 ## Topology
 ```
-Phone (Expo app) ──HTTPS/WSS──▶ API container (NestJS, single instance) ──TLS──▶ Neon PostgreSQL (pooled URL for the app, direct URL for migrations)
+Phone (Expo app) ──HTTPS/WSS──▶ API process (NestJS, single instance) ──TLS──▶ Neon PostgreSQL (pooled URL for the app, direct URL for migrations)
                                         └──▶ Expo Push service · Brevo (e-mail)
 ```
 The phone never connects to the database. Terminate TLS at the host's proxy; the API trusts exactly one proxy hop (`trust proxy 1`, change in `app.setup.ts` if your host differs).
@@ -34,23 +33,28 @@ The phone never connects to the database. Terminate TLS at the host's proxy; the
 
 ## 3. First deploy
 ```bash
-# operator machine or CI (has DIRECT_DATABASE_URL); uses the "tools" image target or a checkout with npm ci
+# operator machine or CI (has DIRECT_DATABASE_URL); a checkout with `npm ci` in backend/
 npx prisma migrate deploy                       # schema + constraints + triggers
 npm run db:seed                                 # roles, permissions, shifts, units, categories (idempotent)
 psql "$DIRECT_DATABASE_URL" -v app_password="'<generated>'" -f prisma/sql/app_role.sql
 npm run bootstrap:admin -- --email owner@… --name "Full Name"   # first Super Admin gets an invitation e-mail with a temporary password (add --print-password to also print it)
 ```
-Then deploy the `runtime` image (`ghcr.io/<org>/<repo>/api:<tag>`, built by the `release-backend` workflow) with the variables above; health checks: `GET /health/live`, `GET /health/ready`.
+Then run the API on your host with the variables above:
+```bash
+cd backend && npm ci && npm run build        # build (prisma generate + nest build)
+npm run start                                # node dist/main.js  (needs Node 22)
+```
+Health checks: `GET /health/live`, `GET /health/ready`. **Install the PostgreSQL client tools (version ≥ your database's, e.g. `postgresql-client-17`) on the same host**, because the in-app backups run `pg_dump`; if your host does not let you install packages (many managed Node hosts do not), use a small VM, or run `npm run backup:cli -- tick` from a machine that has them.
 
 Excel history is imported **once**, after review: `docs/deployment/excel-migration.md` (dry run first; the importer writes a reconciliation report; the workbook is never modified).
 
 ## 4. Releases and rollback
-- `git tag vX.Y.Z` → `release-backend` builds and pushes the image, then a **manual-approval `migrate` job** takes a logical backup and runs `prisma migrate deploy`. Add your host's deploy step there.
-- Migrations are forward-only and additive by convention. Rollback = redeploy the previous image (schema is backward compatible for one release) or restore the pre-migration backup (`docs/operations/backup-recovery-dr.md`). Never edit an applied migration.
+- `git tag vX.Y.Z` → `release-backend` runs a **manual-approval `migrate` job** that takes a logical backup and runs `prisma migrate deploy`. Add your host's deploy step there (or deploy by pulling the tag on the server, `npm ci && npm run build`, restart).
+- Migrations are forward-only and additive by convention. Rollback = redeploy the previous tag (schema is backward compatible for one release) or restore the pre-migration backup (`docs/operations/backup-recovery-dr.md`). Never edit an applied migration.
 - CI blocks schema drift (`prisma migrate diff`), so what is tested is what is deployed.
 
 ## 5. Host choices (not decided here)
-Any container host with a persistent process, WebSocket support, static egress not required, and TLS termination works (Render, Fly.io, Railway, a small VM with Caddy). Serverless/function platforms are **not** suitable (long-lived WebSockets, in-process scheduler). The notification scheduler is idempotent, so a brief overlap during a rolling deploy does not duplicate messages.
+Any host with a persistent Node process, WebSocket support, static egress not required, and TLS termination works (Render, Fly.io, Railway, a small VM with Caddy). Serverless/function platforms are **not** suitable (long-lived WebSockets, in-process scheduler). The notification scheduler is idempotent, so a brief overlap during a rolling deploy does not duplicate messages.
 
 ## 6. Local development
-`docker compose up --build` then `docker compose run --rm migrate` (compose file and Dockerfile are unverified in this sandbox, see above), or the native flow in `backend-foundation.md`.
+the native flow in `backend-foundation.md` (PostgreSQL 16 installed locally, `npm ci`, `npx prisma migrate deploy`, `npm run db:seed`, `npm run start:dev`).

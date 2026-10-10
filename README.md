@@ -24,7 +24,6 @@ npm test && npm run test:e2e              # e2e needs DATABASE_URL pointing at a
 # Mobile (development build required — Expo Go cannot run SQLCipher/biometrics/push)
 cd ../mobile && npm ci && cp .env.example .env && npx expo start
 ```
-Or `docker compose up --build` (see `docs/deployment/production-deployment.md`).
 
 ## Documentation map
 - Analysis & architecture: `docs/architecture/01…06`

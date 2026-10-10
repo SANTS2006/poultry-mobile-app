@@ -30,7 +30,7 @@ After a real restore also call `GET /v1/audit/verify` (Owner/Super Admin) to re-
 ## Recovery playbooks
 1. **Bad data change / bad deploy (minutes–hours ago)**: use Neon PITR to create a branch at the time before the incident, compare, then either promote the branch (update `DATABASE_URL`) or copy the affected rows. Prefer restoring into a *new* branch first; never restore over production blindly.
 2. **Database lost or provider outage**: create a Postgres 16 database anywhere (a new Neon project or another host), `pg_restore --no-owner --no-privileges --dbname=$NEW_DIRECT_URL <dump>`, run `prisma migrate deploy` (no-op if current), re-run `prisma/sql/app_role.sql`, point `DATABASE_URL`/`DIRECT_DATABASE_URL` at it, redeploy, run the checks above. Phones keep their unsent records; they sync when the API is back.
-3. **API host lost**: redeploy the last image tag from GHCR with the saved environment variables. No state lives in the API process except realtime connections (clients reconnect) and the notification scheduler (idempotent).
+3. **API host lost**: redeploy the last release tag (`npm ci && npm run build && npm run start`) with the saved environment variables. No state lives in the API process except realtime connections (clients reconnect) and the notification scheduler (idempotent).
 4. **Secret compromise**: rotate `JWT_SECRET`/`JWT_REFRESH_SECRET` (all users must sign in again — acceptable), database passwords, Brevo API key, Expo token. `DATA_ENCRYPTION_KEY` rotation is not implemented: if leaked, reset MFA for all users after introducing a new key (requires a code change — see security review).
 5. **Lost phone**: an administrator disables the user or revokes their sessions (Admin → Users); the device's tokens stop working immediately and its sockets are dropped. The offline database on the phone is encrypted (SQLCipher, key in Keychain/Keystore) but unsent records on a lost phone are lost to the business — another reason to sync often.
 
@@ -97,6 +97,6 @@ provided only by the host (Neon) — see Layer 1 above — and is not implemente
 ## What you must provide (the code is ready; it has not been run against your Cloudflare account)
 - **Cloudflare R2 bucket** (private), an R2 API token with *Object Read & Write* scoped to that bucket, and your account id → `BACKUP_R2_ACCOUNT_ID`, `BACKUP_R2_BUCKET`, `BACKUP_R2_ACCESS_KEY_ID`, `BACKUP_R2_SECRET_ACCESS_KEY` (EU/FedRAMP jurisdiction buckets also set `BACKUP_R2_ENDPOINT`). Add an R2 object-lifecycle/bucket-lock rule if you want extra protection against deletion.
 - `RECOVERY_ADMIN_DATABASE_URL`: a Postgres 16/17 server/branch where `CREATEDB` is allowed. On Neon: a separate project — **do not** point it at production.
-- `pg_dump`/`pg_restore` ≥ the server major version on the API host (the Dockerfile installs `postgresql-client-17`; on Windows install the PostgreSQL command-line tools and set `BACKUP_PG_BIN_DIR`).
+- `pg_dump`/`pg_restore` ≥ the server major version on the API host (install `postgresql-client-17` on the API host, e.g. from the PostgreSQL apt repository; on Windows install the PostgreSQL command-line tools and set `BACKUP_PG_BIN_DIR`).
 - `BACKUP_ENCRYPTION_KEY` in your secret store, and a copy outside the host.
 Until R2 is configured, backups stay **off** and the Backups screen says so; nothing falls back to the computer's disk.

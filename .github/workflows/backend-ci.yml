@@ -14,20 +14,19 @@ jobs:
     defaults:
       run:
         working-directory: backend
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: makarifor_test
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/makarifor_test
       DIRECT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/makarifor_test
     steps:
       - uses: actions/checkout@v4
+      # PostgreSQL 16 is preinstalled on ubuntu runners; start it and create the test database (no containers involved).
+      - name: Start PostgreSQL
+        working-directory: .
+        run: |
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres'"
+          sudo -u postgres createdb makarifor_test
+          pg_dump --version
       - uses: actions/setup-node@v4
         with:
           node-version: 22

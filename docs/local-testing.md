@@ -19,10 +19,10 @@ Status: I verified that the Expo dev server starts and serves an SDK 57 manifest
 Use the same Wi-Fi for laptop and phone. Commands are for macOS/Linux; on Windows use WSL2 (recommended) or Git Bash.
 
 ## A. Laptop: database + API
-Install: Node 22, PostgreSQL 16 (or Docker), Git.
+Install: Node 22, PostgreSQL 16, Git.
 ```bash
 git clone <repo> && cd poultry-mobile-app && git checkout claude/festive-goodall-5u4fwi
-createdb makarifor_dev                      # or:  docker run -d --name pg -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:16 && createdb -h localhost -U postgres makarifor_dev
+createdb makarifor_dev
 cd backend && npm ci
 cat > .env <<'EOF'
 APP_ENV=development
