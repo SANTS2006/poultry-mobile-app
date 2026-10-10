@@ -16,7 +16,7 @@ import { decryptFile, EncryptStream, HashTap, parseKey, sha256File } from './bac
 import { INVARIANTS } from './backup.invariants';
 import { selectExpired } from './backup.retention';
 import { LocalStorage, S3Storage, type BackupStorage } from './backup.storage';
-import { databaseOf, describeTarget, pgEnv, runTool, startTool, withDatabase } from './pg-tools';
+import { databaseOf, describeTarget, pgEnv, runTool, startTool, toolAvailable, withDatabase } from './pg-tools';
 
 export const MAX_ATTEMPTS = 3;
 const RETRY_DELAYS_MIN = [5, 15];
@@ -293,6 +293,7 @@ export class BackupService {
     const health: 'disabled' | 'never' | 'stale' | 'failing' | 'ok' = !enabled ? 'disabled' : !latestOk ? 'never' : ageHours! > stale ? 'stale' : latestFail && latestFail.createdAt > latestOk.createdAt ? 'failing' : 'ok';
     const warnings: string[] = [];
     if (!this.hasKey) warnings.push('BACKUP_ENCRYPTION_KEY is not set: backups cannot run.');
+    if (!(await toolAvailable('pg_dump', this.binDir))) warnings.push('pg_dump is not installed on the API server (or not on the PATH): backups will fail. Install the PostgreSQL client tools or set BACKUP_PG_BIN_DIR.');
     if (!store.offsite) warnings.push('Backups are stored on the same server as the API. Configure BACKUP_STORAGE=s3 so a copy survives the loss of this server.');
     if (!storage.ok) warnings.push(storage.detail ?? 'Backup storage is not reachable.');
     if (!this.recoveryConfigured) warnings.push('RECOVERY_ADMIN_DATABASE_URL is not set: restore tests and recovery are unavailable.');

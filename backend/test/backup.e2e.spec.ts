@@ -195,6 +195,14 @@ describe('Backups and recovery (e2e: real PostgreSQL, real pg_dump / pg_restore,
       expect((await prisma.backupJob.findUniqueOrThrow({ where: { id: j2.id } })).status).toBe('SUCCESSFUL');
       await prisma.backupJob.deleteMany({ where: { windowKey: { in: ['2098-05-05', '2098-05-06'] } } });
     });
+    it('explains a missing pg_dump in plain words (and warns on the dashboard before it fails)', async () => {
+      const bin = jest.spyOn(backups, 'binDir', 'get').mockReturnValue('/nonexistent-pg-bin');
+      try {
+        expect((await backups.status()).warnings.join(' ')).toMatch(/pg_dump is not installed/);
+        const j = (await backups.createJob('MANUAL'))!;
+        expect((await backups.execute(j.id)).error).toMatch(/was not found.*BACKUP_PG_BIN_DIR/);
+      } finally { bin.mockRestore(); }
+    });
     it('a backup "running" for hours (the process died) is failed so it can be retried', async () => {
       const j = (await backups.createJob('SCHEDULED', { windowKey: '2097-01-01' }))!;
       await prisma.backupJob.update({ where: { id: j.id }, data: { status: 'RUNNING', startedAt: new Date(Date.now() - 4 * 3_600_000) } });

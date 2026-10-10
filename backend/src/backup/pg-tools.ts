@@ -27,7 +27,12 @@ export function startTool(bin: string, args: string[], env: Record<string, strin
   let stderr = '';
   child.stderr?.on('data', (d: Buffer) => { stderr = (stderr + d.toString()).slice(-6000); });
   const done = new Promise<ToolResult>((resolve) => {
-    child.on('error', (e) => resolve({ code: -1, stderr: scrub(`${bin}: ${e.message}`) }));
+    child.on('error', (e: NodeJS.ErrnoException) => resolve({
+      code: -1,
+      stderr: e.code === 'ENOENT'
+        ? `${bin} was not found. Install the PostgreSQL client tools (version ${'>='} your database's) and make sure "${bin}" is on the PATH, or set BACKUP_PG_BIN_DIR to the folder that contains it.`
+        : scrub(`${bin}: ${e.message}`),
+    }));
     child.on('close', (code) => resolve({ code, stderr: scrub(stderr) }));
   });
   return { child, done };
@@ -38,4 +43,9 @@ export async function runTool(bin: string, args: string[], env: Record<string, s
   child.stdout?.resume();
   const t = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
   try { return await done; } finally { clearTimeout(t); }
+}
+
+/** True when `pg_dump` can be started (used to warn on the Backups screen before a backup fails). */
+export async function toolAvailable(bin: string, binDir = ''): Promise<boolean> {
+  return (await runTool(bin, ['--version'], {}, binDir, 15_000)).code === 0;
 }
