@@ -47,7 +47,7 @@ minutes (3 attempts), then alert. For stricter isolation set `BACKUP_ENABLED=0` 
 external scheduler (or `-- run` once a day) — it uses the same code and the same database guard.
 
 **How a backup is made.** `pg_dump --format=custom` is streamed through AES-256-GCM (key `BACKUP_ENCRYPTION_KEY`, job id bound as authenticated data) into a
-temp file, SHA-256 of the *stored bytes* is recorded, the file is uploaded (local folder or S3-compatible bucket), then **read back, checksummed,
+temp file, SHA-256 of the *stored bytes* is recorded, the file is uploaded to Cloudflare R2, then **read back, checksummed,
 decrypted, authenticated and listed with `pg_restore --list`**. Success is decided by `pg_dump`'s exit status plus those checks, never by "a file exists".
 A failed run never overwrites or deletes an earlier backup (each backup is a new object).
 
@@ -94,9 +94,9 @@ provided only by the host (Neon) — see Layer 1 above — and is not implemente
 4. Phones keep unsent records and sync when the API is back; records made between the backup time and the incident are **lost** unless they are still queued on a phone — tell staff to re-enter anything missing.
 5. Rotate nothing unless a secret was exposed; if `BACKUP_ENCRYPTION_KEY` is lost, existing backups are unreadable — keep it in a vault, separate from the bucket.
 
-## Storage you must provide (the code is ready, it has not been run against your account)
-- An S3-compatible bucket in a **different provider/account** from the database, private, versioning/Object-Lock enabled where available, with an access key limited to that bucket (put/get/delete under the prefix; no admin).
-  Consider a second key without delete permission held by an operator for the "protected copy" (the app cannot delete what it cannot reach).
-- `RECOVERY_ADMIN_DATABASE_URL`: a Postgres 16 server/branch where `CREATEDB` is allowed. On Neon: a separate project (free tier is fine) — **do not** point it at production.
-- `pg_dump`/`pg_restore` ≥ the server major version on the API host (the Dockerfile must include `postgresql-client`; check `docs/deployment`).
+## What you must provide (the code is ready; it has not been run against your Cloudflare account)
+- **Cloudflare R2 bucket** (private), an R2 API token with *Object Read & Write* scoped to that bucket, and your account id → `BACKUP_R2_ACCOUNT_ID`, `BACKUP_R2_BUCKET`, `BACKUP_R2_ACCESS_KEY_ID`, `BACKUP_R2_SECRET_ACCESS_KEY` (EU/FedRAMP jurisdiction buckets also set `BACKUP_R2_ENDPOINT`). Add an R2 object-lifecycle/bucket-lock rule if you want extra protection against deletion.
+- `RECOVERY_ADMIN_DATABASE_URL`: a Postgres 16/17 server/branch where `CREATEDB` is allowed. On Neon: a separate project — **do not** point it at production.
+- `pg_dump`/`pg_restore` ≥ the server major version on the API host (the Dockerfile installs `postgresql-client-17`; on Windows install the PostgreSQL command-line tools and set `BACKUP_PG_BIN_DIR`).
 - `BACKUP_ENCRYPTION_KEY` in your secret store, and a copy outside the host.
+Until R2 is configured, backups stay **off** and the Backups screen says so; nothing falls back to the computer's disk.

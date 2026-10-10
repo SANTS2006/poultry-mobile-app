@@ -49,7 +49,7 @@ export default function Backups() {
 
       <Row style={{ gap: space.md, alignItems: 'stretch' }}>
         <StatTile icon="time-outline" label="Next daily backup" value={s.enabled ? s.scheduleTime : 'Off'} hint={s.timezone} />
-        <StatTile icon="cloud-outline" label="Stored at" value={s.destination} hint={s.offsite ? 'Off this server' : 'Same server'} tone={s.offsite ? undefined : 'warn'} />
+        <StatTile icon="cloud-outline" label="Stored at" value={s.destination} hint={s.storageOk ? 'Off this server' : 'Not reachable'} tone={s.storageOk ? undefined : 'warn'} />
       </Row>
       <Row style={{ gap: space.md, alignItems: 'stretch' }}>
         <StatTile icon="archive-outline" label="Kept for" value={`${s.retentionDays} days`} hint={s.keepMonthly ? `+ ${s.keepMonthly} monthly` : undefined} />

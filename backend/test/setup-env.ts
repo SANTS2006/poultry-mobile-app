@@ -1,5 +1,3 @@
-import { tmpdir } from 'os';
-import { join } from 'path';
 // Deterministic, non-secret environment for tests.
 process.env.APP_ENV = 'test';
 process.env.LOG_LEVEL = 'silent';
@@ -10,5 +8,4 @@ process.env.DATABASE_URL ??= 'postgresql://postgres@localhost:5433/makarifor_tes
 process.env.DIRECT_DATABASE_URL ??= process.env.DATABASE_URL;
 process.env.BACKUP_ENABLED = '1';
 process.env.BACKUP_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64');
-process.env.BACKUP_LOCAL_DIR = join(tmpdir(), 'mk-test-backups');
 process.env.RECOVERY_ADMIN_DATABASE_URL ??= 'postgresql://postgres@localhost:5433/postgres';

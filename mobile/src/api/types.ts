@@ -95,7 +95,7 @@ export interface BackupJob {
 }
 export interface BackupStatus {
   health: 'ok' | 'stale' | 'failing' | 'never' | 'disabled'; enabled: boolean; environment: string; timezone: string; scheduleTime: string; retentionDays: number; keepMonthly: number;
-  destination: string; offsite: boolean; storageOk: boolean; recoveryConfigured: boolean; database: string;
+  destination: string; storageOk: boolean; recoveryConfigured: boolean; database: string;
   latestSuccess: BackupJob | null; latestFailure: BackupJob | null; running: BackupJob | null; backupAgeHours: number | null; staleAfterHours: number; warnings: string[];
 }
 export interface RecoveryOp {

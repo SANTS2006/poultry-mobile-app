@@ -1,8 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { randomBytes } from 'crypto';
-import { readFile, writeFile } from 'fs/promises';
-import { join } from 'path';
 import { EncryptionService } from '../src/common/crypto/encryption.service';
 import { base32Encode } from '../src/common/crypto/totp';
 import { BackupScheduler } from '../src/backup/backup.scheduler';
@@ -10,13 +8,15 @@ import { BackupService } from '../src/backup/backup.service';
 import { confirmPhrase, RecoveryService } from '../src/backup/recovery.service';
 import { AuthService } from '../src/auth/auth.service';
 import { MailService } from '../src/mail/mail.service';
+import { FakeR2 } from './fake-storage';
 import { api, bearer, createApp, makeUser, PASSWORD, seed, signIn, totpAt } from './helpers';
 
 describe('Backups and recovery (e2e: real PostgreSQL, real pg_dump / pg_restore, real encryption)', () => {
   let app: INestApplication; let prisma: PrismaClient; let backups: BackupService; let scheduler: BackupScheduler; let recovery: RecoveryService; let mail: MailService;
   let admin: string; let owner: string; let secret: string;
   const dropAfter: string[] = [];
-  const storeDir = process.env.BACKUP_LOCAL_DIR as string;
+  const r2 = new FakeR2();
+  const blob = (key: string | null) => r2.blobs.get(key as string) as Buffer;
   const code = (stepOffset: number) => totpAt(secret, Date.now() + stepOffset * 30_000);
   const waitFor = async <T>(fn: () => Promise<T | null | undefined | false>, ms = 60_000): Promise<T> => {
     const end = Date.now() + ms;
@@ -29,7 +29,7 @@ describe('Backups and recovery (e2e: real PostgreSQL, real pg_dump / pg_restore,
     ({ app, prisma, mail } = await createApp());
     await seed(prisma);
     await prisma.role.updateMany({ data: { mfaRequired: false } });
-    backups = app.get(BackupService); scheduler = app.get(BackupScheduler); recovery = app.get(RecoveryService);
+    backups = app.get(BackupService); backups.useStorage(r2); scheduler = app.get(BackupScheduler); recovery = app.get(RecoveryService);
     const a = await makeUser(prisma, { roles: ['SUPER_ADMIN'], fullName: 'Root Admin' });
     admin = (await signIn(app, a.email)).accessToken;
     owner = (await signIn(app, (await makeUser(prisma, { roles: ['OWNER'] })).email)).accessToken;
@@ -75,20 +75,20 @@ describe('Backups and recovery (e2e: real PostgreSQL, real pg_dump / pg_restore,
       const job = await waitFor(async () => { const j = await prisma.backupJob.findUnique({ where: { id: first } }); return j && ['SUCCESSFUL', 'FAILED'].includes(j.status) && j.verification !== 'NOT_VERIFIED' ? j : null; });
       expect(job.error).toBeNull();
       expect(job.status).toBe('SUCCESSFUL');
-      expect(job).toMatchObject({ kind: 'MANUAL', encrypted: true, verification: 'VERIFIED', destination: 'local disk', format: 'pg_dump-custom+aes-256-gcm' });
+      expect(job).toMatchObject({ kind: 'MANUAL', encrypted: true, verification: 'VERIFIED', destination: 'Cloudflare R2 · test-bucket', format: 'pg_dump-custom+aes-256-gcm' });
       expect(Number(job.sizeBytes)).toBeGreaterThan(1000);
       expect(job.sha256).toMatch(/^[0-9a-f]{64}$/);
-      const file = await readFile(join(storeDir, job.storageKey as string));
+      const file = blob(job.storageKey);
       expect(file.subarray(0, 5).toString()).toBe('MKBK1');
       expect(file.includes(Buffer.from('PGDMP'))).toBe(false); // plain pg_dump header is not visible
       expect(file.includes(Buffer.from('admin@'))).toBe(false);
-      const actions = (await prisma.auditLog.findMany({ where: { entityId: first }, select: { action: true } })).map((a) => a.action);
+      const actions = await waitFor(async () => { const a = (await prisma.auditLog.findMany({ where: { entityId: first }, select: { action: true } })).map((x) => x.action); return a.includes('backup.verified') ? a : null; }); // the audit row is written just after the status update
       expect(actions).toEqual(expect.arrayContaining(['backup.manual_requested', 'backup.succeeded', 'backup.verified']));
     });
-    it('the dashboard status reports it, with an honest warning that local disk is not off-site', async () => {
+    it('the dashboard status reports it (stored in Cloudflare R2, nothing written to the API server)', async () => {
       const s = (await api(app).get('/v1/backups/status').set(bearer(admin)).expect(200)).body;
-      expect(s).toMatchObject({ health: 'ok', enabled: true, destination: 'local disk', offsite: false, latestSuccess: { id: first, verification: 'VERIFIED' } });
-      expect(s.warnings.join(' ')).toMatch(/same server/);
+      expect(s).toMatchObject({ health: 'ok', enabled: true, destination: 'Cloudflare R2 · test-bucket', storageOk: true, latestSuccess: { id: first, verification: 'VERIFIED' } });
+      expect(s.warnings.join(' ')).not.toMatch(/R2|same server/);
       expect(JSON.stringify(s)).not.toMatch(/postgresql:\/\/|password/i);
       const list = (await api(app).get('/v1/backups').set(bearer(admin)).expect(200)).body;
       expect(list.items.some((i: { id: string }) => i.id === first)).toBe(true);
@@ -115,10 +115,10 @@ describe('Backups and recovery (e2e: real PostgreSQL, real pg_dump / pg_restore,
     });
     it('a tampered stored file is detected and marked failed (and administrators are alerted)', async () => {
       const job = await prisma.backupJob.findUniqueOrThrow({ where: { id: first } });
-      const path = join(storeDir, job.storageKey as string);
-      const good = await readFile(path);
+      const key = job.storageKey as string;
+      const good = blob(key);
       const bad = Buffer.from(good); bad[200] ^= 0xff;
-      await writeFile(path, bad);
+      r2.blobs.set(key, bad);
       mail.outbox.length = 0;
       try {
         const r = (await api(app).post(`/v1/backups/${first}/verify`).set(bearer(admin)).send({}).expect(202)).body;
@@ -126,7 +126,7 @@ describe('Backups and recovery (e2e: real PostgreSQL, real pg_dump / pg_restore,
         expect(r.message).toMatch(/Checksum mismatch/);
         expect((await prisma.backupJob.findUniqueOrThrow({ where: { id: first } })).verification).toBe('FAILED');
         expect(mail.outbox.some((m) => /verification FAILED/.test(m.subject))).toBe(true);
-      } finally { await writeFile(path, good); }
+      } finally { r2.blobs.set(key, good); }
       await backups.verify(first, { deep: false });
       expect((await prisma.backupJob.findUniqueOrThrow({ where: { id: first } })).verification).toBe('VERIFIED');
     });
@@ -195,6 +195,15 @@ describe('Backups and recovery (e2e: real PostgreSQL, real pg_dump / pg_restore,
       expect((await prisma.backupJob.findUniqueOrThrow({ where: { id: j2.id } })).status).toBe('SUCCESSFUL');
       await prisma.backupJob.deleteMany({ where: { windowKey: { in: ['2098-05-05', '2098-05-06'] } } });
     });
+    it('without Cloudflare R2 configured the dashboard says so and backups stay off (nothing falls back to local disk)', async () => {
+      const fresh = new BackupService(app.get(BackupService)['prisma'], app.get(BackupService)['audit'], app.get(BackupService)['mail'], app.get(BackupService)['settings'], app.get(BackupService)['logger'], app.get(BackupService)['config']);
+      expect(fresh.r2Configured).toBe(false);
+      expect(fresh.enabled).toBe(false);
+      expect(() => fresh.storage()).toThrow(/Cloudflare R2 is not configured/);
+      const st = await fresh.status();
+      expect(st).toMatchObject({ enabled: false, health: 'disabled', storageOk: false });
+      expect(st.warnings.join(' ')).toMatch(/Cloudflare R2 is not configured/);
+    });
     it('explains a missing pg_dump in plain words (and warns on the dashboard before it fails)', async () => {
       const bin = jest.spyOn(backups, 'binDir', 'get').mockReturnValue('/nonexistent-pg-bin');
       try {
@@ -242,7 +251,7 @@ describe('Backups and recovery (e2e: real PostgreSQL, real pg_dump / pg_restore,
       await api(app).post(`/v1/backups/${first}/download`).set(bearer(admin)).send({ password: 'wrong-password-123', code: code(0) }).expect(403);
       await api(app).post(`/v1/backups/${first}/download`).set(bearer(admin)).send({ password: PASSWORD, code: '000000' }).expect(401);
       const res = await api(app).post(`/v1/backups/${first}/download`).set(bearer(admin)).send({ password: PASSWORD, code: code(-1) }).buffer(true).parse((r, cb) => { const c: Buffer[] = []; r.on('data', (d: Buffer) => c.push(d)); r.on('end', () => cb(null, Buffer.concat(c))); }).expect(200);
-      const stored = await readFile(join(storeDir, (await prisma.backupJob.findUniqueOrThrow({ where: { id: first } })).storageKey as string));
+      const stored = blob((await prisma.backupJob.findUniqueOrThrow({ where: { id: first } })).storageKey);
       expect((res.body as Buffer).equals(stored)).toBe(true);
       expect(res.headers['cache-control']).toBe('no-store');
       expect(await prisma.auditLog.count({ where: { action: 'backup.downloaded', entityId: first } })).toBe(1);

@@ -22,8 +22,8 @@ describe('parseEnv', () => {
   });
 
   it('treats blank backup lines copied from .env.example as unset (defaults apply)', () => {
-    const env = parseEnv({ ...base, BACKUP_ENABLED: '', BACKUP_STORAGE: '', BACKUP_STALE_HOURS: '', BACKUP_S3_REGION: '', BACKUP_S3_PREFIX: '', BACKUP_LOCAL_DIR: '', BACKUP_ENCRYPTION_KEY: '', RECOVERY_ADMIN_DATABASE_URL: '' });
-    expect(env).toMatchObject({ BACKUP_STORAGE: 'local', BACKUP_STALE_HOURS: 26, BACKUP_S3_REGION: 'auto', BACKUP_LOCAL_DIR: './backups' });
+    const env = parseEnv({ ...base, BACKUP_ENABLED: '', BACKUP_STALE_HOURS: '', BACKUP_R2_PREFIX: '', BACKUP_R2_BUCKET: '', BACKUP_ENCRYPTION_KEY: '', RECOVERY_ADMIN_DATABASE_URL: '' });
+    expect(env).toMatchObject({ BACKUP_STALE_HOURS: 26, BACKUP_R2_PREFIX: 'makarifor/', BACKUP_R2_BUCKET: '' });
     expect(env.BACKUP_ENABLED).toBeUndefined();
   });
 

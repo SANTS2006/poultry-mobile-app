@@ -29,7 +29,7 @@ totals, stock and permissions are computed server-side; the app only sends inten
 - **Security**: Argon2id, rotating refresh tokens, TOTP MFA with replay protection, brute-force throttles, password history, 8-digit single-use 5-minute reset codes, deny-by-default permissions, farm scoping, parameterized queries (Prisma; the few raw queries use tagged templates), body limits, helmet, CORS allow-list, hash-chained append-only audit log, TLS required in production, secrets validated at boot, no secrets in the app bundle.
 
 ## 3. What was added in this change
-Backend: `src/backup/*` (crypto, storage S3/local, retention, scheduler, service, recovery, controllers), migration `20261010000100_backup_recovery`
+Backend: `src/backup/*` (crypto, storage Cloudflare R2, retention, scheduler, service, recovery, controllers), migration `20261010000100_backup_recovery`
 (tables `BackupJob`, `RecoveryOperation`, `BackupSetting`; permission `backups.manage` for SUPER_ADMIN only), `scripts/backup-cli.ts` (`npm run backup:cli`),
 env validation, graceful shutdown/timeouts, Dockerfile client. Mobile: Administration → *Backups and recovery* (status, history, run now, integrity check,
 restore test, guarded restore), detail sheet, full-screen restore flow. Docs: this file, `backup-recovery-dr.md`.
@@ -45,7 +45,7 @@ New routes (all `backups.manage`; Owner and every other role get 403 — tested)
   recovery refused without phrase / wrong password / unverified backup / for non-Super-Admin; recovery takes a safety snapshot, restores into a NEW database, production row counts unchanged; second concurrent recovery → 409;
   safety-snapshot failure stops everything; production database cannot be restored over or dropped.
 - Mobile: tsc, eslint, jest pass; Android and iOS bundles compile.
-- **Not run / not verified:** S3 storage against a real bucket (code written to the AWS SDK; local storage is what was exercised); Docker build; the mobile screens on a device; multi-process (true multi-instance) scheduling — simulated by concurrent calls into the same database guard, which is what enforces it; PITR; pg_dump against Neon (client version must be ≥ server).
+- **Not run / not verified:** Cloudflare R2 against a real bucket (code uses the S3-compatible API; the tests use an in-memory stand-in); Docker build; the mobile screens on a device; multi-process (true multi-instance) scheduling — simulated by concurrent calls into the same database guard, which is what enforces it; PITR; pg_dump against Neon (client version must be ≥ server).
 
 ## 5. Load baseline (local, one Node process, PostgreSQL on the same machine, autocannon, 10 s per run)
 This measures the code on a laptop-class sandbox with a ~0–1 ms database. It says nothing about Neon latency (~0.7–1 s per query round trip from afar — see `monitoring-and-incident-response.md`) or about your hosting size. No capacity claim should be derived from it.
@@ -62,11 +62,11 @@ Throughput plateaus (single Node process, CPU-bound) and latency grows linearly 
 
 ## 6. Production deployment checklist
 1. Take a manual backup first (`pg_dump` with `scripts/backup.sh`, or Neon branch). Note the rollback plan: redeploy previous image; the migration is additive (3 new tables, 4 enums, 1 permission row) and is not required by the old code.
-2. Generate `BACKUP_ENCRYPTION_KEY`; store it in a vault **and** the host's secrets. Set `BACKUP_STORAGE=s3` + bucket variables, `RECOVERY_ADMIN_DATABASE_URL`, optional `BACKUP_ALERT_EMAILS`.
+2. Generate `BACKUP_ENCRYPTION_KEY`; store it in a vault **and** the host's secrets. Set the `BACKUP_R2_*` Cloudflare R2 variables, `RECOVERY_ADMIN_DATABASE_URL`, optional `BACKUP_ALERT_EMAILS`.
 3. Build the new image (it now contains `postgresql-client-17`); confirm `pg_dump --version` ≥ your Neon server's major version inside the container.
 4. `prisma migrate deploy` (tools image), then deploy the API. Existing SUPER_ADMIN users get `backups.manage` from the migration; sign out/in to refresh permissions.
 5. In the app: Backups → *Back up now* → wait for *Successful* → open it → *Test restore (isolated)* → must pass. Only then treat backups as operational.
-6. Check Backups shows *Stored at: s3://…* ("Off this server"), no warnings, next run at the scheduled time; confirm the next morning that a `Daily` backup exists.
+6. Check Backups shows *Stored at: Cloudflare R2 · <bucket>* ("Off this server"), no warnings, next run at the scheduled time; confirm the next morning that a `Daily` backup exists.
 7. Add an external monitor on `/health/ready` and keep e-mail alerts enabled; quarterly, repeat the restore test and the runbook in `backup-recovery-dr.md`.
 
 ## 7. Remaining risks and recommendations

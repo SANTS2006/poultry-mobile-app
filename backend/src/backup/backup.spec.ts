@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import { createReadStream, createWriteStream } from 'fs';
+import { createWriteStream } from 'fs';
 import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -7,7 +7,6 @@ import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { parseEnv } from '../config/env';
 import { decryptFile, EncryptStream, HashTap, sha256File } from './backup.crypto';
-import { LocalStorage } from './backup.storage';
 import { selectExpired, type RetentionJob } from './backup.retention';
 import { databaseOf, describeTarget, pgEnv, withDatabase } from './pg-tools';
 
@@ -54,17 +53,6 @@ describe('backup encryption', () => {
     const { enc } = await encrypt(Buffer.alloc(0), 'j');
     await decryptFile(enc, join(dir, 'e'), key, 'j');
     expect((await readFile(join(dir, 'e'))).length).toBe(0);
-  });
-
-  it('local storage cannot be tricked into leaving its folder', async () => {
-    const s = new LocalStorage(join(dir, 'store'));
-    const src = join(dir, 'src'); await writeFile(src, 'x');
-    await expect(s.put('../escape', src)).rejects.toThrow(/Invalid storage key/);
-    await s.put('a/b.enc', src);
-    expect(await s.exists('a/b.enc')).toBe(true);
-    await s.delete('a/b.enc'); await s.delete('a/b.enc'); // deleting twice is fine
-    expect(await s.exists('a/b.enc')).toBe(false);
-    void createReadStream; // (imported for symmetry with the storage API)
   });
 });
 
@@ -119,8 +107,5 @@ describe('backup configuration', () => {
     expect(() => parseEnv({ ...prod, BACKUP_ENCRYPTION_KEY: prod.DATA_ENCRYPTION_KEY })).toThrow(/must differ/);
     expect(() => parseEnv({ ...prod, BACKUP_ENCRYPTION_KEY: Buffer.alloc(32, 2).toString('base64') })).not.toThrow();
     expect(() => parseEnv({ ...prod, BACKUP_ENABLED: '0', BACKUP_ENCRYPTION_KEY: 'ignored' })).not.toThrow();
-  });
-  it('s3 storage needs its bucket and credentials', () => {
-    expect(() => parseEnv({ ...prod, BACKUP_ENCRYPTION_KEY: Buffer.alloc(32, 2).toString('base64'), BACKUP_STORAGE: 's3' })).toThrow(/BACKUP_S3_BUCKET/);
   });
 });

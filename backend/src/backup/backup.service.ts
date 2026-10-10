@@ -15,7 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { decryptFile, EncryptStream, HashTap, parseKey, sha256File } from './backup.crypto';
 import { INVARIANTS } from './backup.invariants';
 import { selectExpired } from './backup.retention';
-import { LocalStorage, S3Storage, type BackupStorage } from './backup.storage';
+import { R2Storage, type BackupStorage } from './backup.storage';
 import { databaseOf, describeTarget, pgEnv, runTool, startTool, toolAvailable, withDatabase } from './pg-tools';
 
 export const MAX_ATTEMPTS = 3;
@@ -44,21 +44,28 @@ export class BackupService {
   get enabled(): boolean {
     const flag = this.cfg('BACKUP_ENABLED');
     const on = flag ? flag === '1' : ['staging', 'production'].includes(this.appEnv);
-    return on && this.hasKey;
+    return on && this.hasKey && (this.r2Configured || !!this.store);
   }
   get hasKey(): boolean { return Buffer.from(this.cfg('BACKUP_ENCRYPTION_KEY'), 'base64').length === 32; }
   get recoveryConfigured(): boolean { return !!this.cfg('RECOVERY_ADMIN_DATABASE_URL'); }
   get binDir(): string { return this.cfg('BACKUP_PG_BIN_DIR'); }
   get key(): Buffer { return parseKey(this.cfg('BACKUP_ENCRYPTION_KEY')); }
 
+  /** Cloudflare R2 needs the account id (or an explicit endpoint), a bucket and an access key pair. */
+  get r2Configured(): boolean {
+    return !!(this.cfg('BACKUP_R2_BUCKET') && this.cfg('BACKUP_R2_ACCESS_KEY_ID') && this.cfg('BACKUP_R2_SECRET_ACCESS_KEY') && (this.cfg('BACKUP_R2_ENDPOINT') || this.cfg('BACKUP_R2_ACCOUNT_ID')));
+  }
+
   storage(): BackupStorage {
     if (this.store) return this.store;
-    this.store = this.cfg('BACKUP_STORAGE') === 's3'
-      ? new S3Storage({ bucket: this.cfg('BACKUP_S3_BUCKET'), region: this.cfg('BACKUP_S3_REGION'), endpoint: this.cfg('BACKUP_S3_ENDPOINT') || undefined, accessKeyId: this.cfg('BACKUP_S3_ACCESS_KEY_ID'), secretAccessKey: this.cfg('BACKUP_S3_SECRET_ACCESS_KEY'), prefix: this.cfg('BACKUP_S3_PREFIX') })
-      : new LocalStorage(this.cfg('BACKUP_LOCAL_DIR'));
+    if (!this.r2Configured) throw new Error('Cloudflare R2 is not configured (BACKUP_R2_ACCOUNT_ID, BACKUP_R2_BUCKET, BACKUP_R2_ACCESS_KEY_ID, BACKUP_R2_SECRET_ACCESS_KEY).');
+    this.store = new R2Storage({
+      bucket: this.cfg('BACKUP_R2_BUCKET'), endpoint: this.cfg('BACKUP_R2_ENDPOINT') || `https://${this.cfg('BACKUP_R2_ACCOUNT_ID')}.r2.cloudflarestorage.com`,
+      accessKeyId: this.cfg('BACKUP_R2_ACCESS_KEY_ID'), secretAccessKey: this.cfg('BACKUP_R2_SECRET_ACCESS_KEY'), prefix: this.cfg('BACKUP_R2_PREFIX'),
+    });
     return this.store;
   }
-  /** Tests inject a storage. */
+  /** Tests inject an in-memory storage so no real bucket is needed. */
   useStorage(s: BackupStorage): void { this.store = s; }
 
   // ── settings ────────────────────────────────────────────────────────────────────────────────
@@ -287,21 +294,21 @@ export class BackupService {
     ]);
     const ageHours = latestOk ? (now.getTime() - (latestOk.finishedAt ?? latestOk.createdAt).getTime()) / 3_600_000 : null;
     const stale = this.cfg('BACKUP_STALE_HOURS');
-    const store = this.storage();
-    const storage = await store.health();
+    const store = this.r2Configured || this.store ? this.storage() : null;
+    const storage = store ? await store.health() : { ok: false, detail: undefined };
     const enabled = this.enabled && s.enabled;
     const health: 'disabled' | 'never' | 'stale' | 'failing' | 'ok' = !enabled ? 'disabled' : !latestOk ? 'never' : ageHours! > stale ? 'stale' : latestFail && latestFail.createdAt > latestOk.createdAt ? 'failing' : 'ok';
     const warnings: string[] = [];
     if (!this.hasKey) warnings.push('BACKUP_ENCRYPTION_KEY is not set: backups cannot run.');
     if (!(await toolAvailable('pg_dump', this.binDir))) warnings.push('pg_dump is not installed on the API server (or not on the PATH): backups will fail. Install the PostgreSQL client tools or set BACKUP_PG_BIN_DIR.');
-    if (!store.offsite) warnings.push('Backups are stored on the same server as the API. Configure BACKUP_STORAGE=s3 so a copy survives the loss of this server.');
-    if (!storage.ok) warnings.push(storage.detail ?? 'Backup storage is not reachable.');
+    if (!store) warnings.push('Cloudflare R2 is not configured: backups cannot run. Set BACKUP_R2_ACCOUNT_ID, BACKUP_R2_BUCKET, BACKUP_R2_ACCESS_KEY_ID and BACKUP_R2_SECRET_ACCESS_KEY.');
+    else if (!storage.ok) warnings.push(storage.detail ?? 'Cloudflare R2 is not reachable.');
     if (!this.recoveryConfigured) warnings.push('RECOVERY_ADMIN_DATABASE_URL is not set: restore tests and recovery are unavailable.');
     if (latestOk && !latestVerified) warnings.push('No backup has been verified yet.');
     return {
       health, enabled, environment: this.appEnv, timezone: await this.settings.get<string>('business.timezone'),
       scheduleTime: s.scheduleTime, retentionDays: s.retentionDays, keepMonthly: s.keepMonthly,
-      destination: store.label, offsite: store.offsite, storageOk: storage.ok, recoveryConfigured: this.recoveryConfigured,
+      destination: store?.label ?? 'Cloudflare R2 (not configured)', storageOk: storage.ok, recoveryConfigured: this.recoveryConfigured,
       database: describeTarget(this.cfg('DIRECT_DATABASE_URL')),
       latestSuccess: latestOk ? this.brief(latestOk) : null, latestFailure: latestFail ? this.brief(latestFail) : null, running: running ? this.brief(running) : null,
       backupAgeHours: ageHours === null ? null : Math.round(ageHours * 10) / 10, staleAfterHours: stale, warnings,
