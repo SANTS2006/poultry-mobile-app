@@ -21,6 +21,7 @@ const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
 export class NotificationScheduler implements OnModuleInit, OnModuleDestroy {
   private timer?: NodeJS.Timeout;
   private lastMaintenanceDate = '';
+  private ticking = false;
 
   constructor(
     private readonly settings: SettingsService, private readonly recipients: RecipientsService, private readonly notifications: NotificationsService,
@@ -32,7 +33,12 @@ export class NotificationScheduler implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     if (this.config.get('APP_ENV', { infer: true }) === 'test') return; // tests drive tick() explicitly
-    this.timer = setInterval(() => { void this.notifications.track(this.tick().catch((e) => this.logger.error({ err: e }, 'Scheduler tick failed'))); }, TICK_MS);
+    // A tick that is still waiting on a slow or unreachable database must not be joined by another one (they would exhaust the connection pool).
+    this.timer = setInterval(() => {
+      if (this.ticking) return;
+      this.ticking = true;
+      void this.notifications.track(this.tick().catch((e) => this.logger.error({ err: e }, 'Scheduler tick failed')).finally(() => { this.ticking = false; }));
+    }, TICK_MS);
     this.timer.unref();
   }
   onModuleDestroy(): void { if (this.timer) clearInterval(this.timer); }
@@ -43,7 +49,14 @@ export class NotificationScheduler implements OnModuleInit, OnModuleDestroy {
       ['receipts', () => this.notifications.pollReceipts(now)], ['maintenance', () => this.maintenance(now)],
     ];
     for (const [name, fn] of steps) {
-      try { await fn(); } catch (e) { this.logger.error({ err: e, step: name }, 'Scheduled notification step failed'); }
+      try { await fn(); } catch (e) {
+        // Database unreachable / pool exhausted (Prisma P1001, P1002, P1008, P1017, P2024): say it once, briefly, and skip the other steps this minute.
+        if (typeof (e as { code?: unknown })?.code === 'string' && ['P1001', 'P1002', 'P1008', 'P1017', 'P2024'].includes((e as { code: string }).code)) {
+          this.logger.warn({ step: name, code: (e as { code: string }).code }, 'Database not reachable; scheduled notifications skipped until the next minute');
+          return;
+        }
+        this.logger.error({ err: e, step: name }, 'Scheduled notification step failed');
+      }
     }
   }
 
