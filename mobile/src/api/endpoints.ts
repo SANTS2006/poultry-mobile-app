@@ -1,3 +1,5 @@
+import type { ChatMessage, ConversationDetail, ConversationSummary } from '../lib/chat/types';
+import type { CallApi, CallView, IceServer } from '../services/call-manager';
 import type { ApiClient } from '../services/api-client';
 import type { UserSummary } from '../services/session-manager';
 import type {
@@ -30,6 +32,39 @@ export function createEndpoints(api: ApiClient) {
     units: () => get<UnitInfo[]>('/units'),
     prices: () => get<PriceRow[]>('/prices'),
     setPrice: (unit: Unit, amount: string, reason: string) => post('/prices', { unit, amount, reason }),
+
+    chat: {
+      config: () => get<{ attachments: boolean; maxAttachmentBytes: number; maxMessageChars: number; maxGroupMembers: number; allowedTypes: string[] }>('/chat/config'),
+      users: (p: Params) => get<Page<ChatUser>>('/chat/users', p),
+      conversations: (p: Params) => get<Page<ConversationSummary>>('/chat/conversations', p),
+      conversation: (id: string) => get<ConversationDetail>(`/chat/conversations/${id}`),
+      openDirect: (userId: string) => post<ConversationDetail>('/chat/conversations/direct', { userId }),
+      createGroup: (body: { title: string; description?: string; avatar?: string; memberIds: string[] }) => post<ConversationDetail>('/chat/conversations/group', body),
+      updateGroup: (id: string, body: { title?: string; description?: string | null; avatar?: string | null }) => patch<ConversationDetail>(`/chat/conversations/${id}`, body),
+      addMembers: (id: string, userIds: string[]) => post<ConversationDetail>(`/chat/conversations/${id}/members`, { userIds }),
+      removeMember: (id: string, userId: string) => del(`/chat/conversations/${id}/members/${userId}`),
+      setRole: (id: string, userId: string, role: 'ADMIN' | 'MEMBER') => put<ConversationDetail>(`/chat/conversations/${id}/members/${userId}/role`, { role }),
+      mute: (id: string, muted: boolean, hours?: number) => put(`/chat/conversations/${id}/mute`, { muted, hours }),
+      messages: (id: string, p: Params) => get<{ items: ChatMessage[]; hasMore: boolean; nextBefore: number | null }>(`/chat/conversations/${id}/messages`, p),
+      send: (id: string, body: { clientId: string; kind: 'TEXT' | 'IMAGE' | 'FILE'; body?: string; replyToId?: string; attachmentId?: string }) => post<ChatMessage>(`/chat/conversations/${id}/messages`, body),
+      edit: (messageId: string, body: string) => patch<ChatMessage>(`/chat/messages/${messageId}`, { body }),
+      remove: (messageId: string) => del<ChatMessage>(`/chat/messages/${messageId}`),
+      report: (messageId: string, reason: string) => post(`/chat/messages/${messageId}/report`, { reason }),
+      markRead: (id: string, upToSeq: number) => post(`/chat/conversations/${id}/read`, { upToSeq }),
+      createUpload: (body: { conversationId: string; fileName: string; mimeType: string; sizeBytes: number }) => post<{ attachmentId: string; uploadUrl: string; headers: Record<string, string> }>('/chat/attachments', body),
+      completeUpload: (id: string) => post<{ attachmentId: string; status: string }>(`/chat/attachments/${id}/complete`),
+      downloadUrl: (id: string) => get<{ url: string; fileName: string; mimeType: string; sizeBytes: number }>(`/chat/attachments/${id}/url`),
+      blocks: () => get<{ userId: string; name: string }[]>('/chat/blocks'),
+      block: (userId: string) => post('/chat/blocks', { userId }),
+      unblock: (userId: string) => del(`/chat/blocks/${userId}`),
+      settings: () => get<ChatSettings>('/chat/settings'),
+      setSettings: (body: Partial<ChatSettings>) => put<ChatSettings>('/chat/settings', body),
+    },
+    calls: {
+      ice: () => get<{ iceServers: IceServer[]; turn: boolean }>('/calls/ice'),
+      history: (p: Params) => get<Page<CallHistoryItem>>('/calls', p),
+      current: () => get<{ call: CallView | null }>('/calls/current'),
+    },
 
     production: {
       list: (p: Params) => get<Page<ProductionRecord>>('/production', p),
@@ -131,4 +166,20 @@ export function createEndpoints(api: ApiClient) {
   };
 }
 
+export interface ChatUser { id: string; name: string; role: string | null; hasAvatar: boolean; avatarVersion: number; online: boolean }
+export interface ChatSettings { showPreviews: boolean; pushMessages: boolean; pushCalls: boolean }
+export interface CallHistoryItem {
+  id: string; conversationId: string; kind: 'AUDIO' | 'VIDEO'; status: string; endReason: string | null; peerId: string; peerName: string; direction: 'outgoing' | 'incoming';
+  createdAt: string; answeredAt: string | null; endedAt: string | null; durationSeconds: number;
+}
+
 export type Endpoints = ReturnType<typeof createEndpoints>;
+
+/** The REST half of the call engine (the socket half is in services/call-bridge). */
+export const callApiFrom = (api: ApiClient): CallApi => {
+  const post = <T>(path: string, body?: unknown) => api.request<T>('POST', `/v1${path}`, body ?? {});
+  return {
+    start: (conversationId, kind) => post('/calls', { conversationId, kind }),
+    accept: (id) => post(`/calls/${id}/accept`), reject: (id) => post(`/calls/${id}/reject`), cancel: (id) => post(`/calls/${id}/cancel`), end: (id) => post(`/calls/${id}/end`),
+  };
+};

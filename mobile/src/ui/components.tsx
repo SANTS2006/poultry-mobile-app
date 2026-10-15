@@ -250,13 +250,13 @@ export function IconTile({ name, tone = 'primary' }: { name: IconName; tone?: 'p
   return <View style={{ width: 40, height: 40, borderRadius: radius.md - 2, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}><Icon name={name} size="md" color={fg} /></View>;
 }
 
-export function Avatar({ name, size = 44, uri }: { name: string; size?: number; uri?: string | null }) {
+export function Avatar({ name, size = 44, uri, headers }: { name: string; size?: number; uri?: string | null; headers?: Record<string, string> }) {
   const c = useColors();
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join('') || '?';
   const box = { width: size, height: size, borderRadius: size / 2, overflow: 'hidden' as const };
   if (uri && failedUri !== uri) {
-    return <Image accessibilityIgnoresInvertColors accessibilityElementsHidden importantForAccessibility="no-hide-descendants" source={{ uri }} onError={() => setFailedUri(uri)} style={[box, { backgroundColor: c.accentSoft }]} />;
+    return <Image accessibilityIgnoresInvertColors accessibilityElementsHidden importantForAccessibility="no-hide-descendants" source={{ uri, headers }} onError={() => setFailedUri(uri)} style={[box, { backgroundColor: c.accentSoft }]} />;
   }
   return (
     <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[box, { backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' }]}>

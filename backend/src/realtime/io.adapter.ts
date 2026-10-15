@@ -14,7 +14,7 @@ export class SecureIoAdapter extends IoAdapter {
       path: '/realtime',
       transports: ['websocket'], // no long-polling fallback: smaller attack surface, native apps support WebSocket
       serveClient: false, // never serve the client bundle
-      maxHttpBufferSize: 10_000, // 10 kB per message: clients only send tiny control messages
+      maxHttpBufferSize: 32_768, // 32 kB per message: control messages are tiny; WebRTC offers (SDP) for video calls can reach ~10 kB
       connectTimeout: 10_000,
       pingInterval: 25_000,
       pingTimeout: 20_000,

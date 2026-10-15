@@ -42,6 +42,20 @@ const schema = z
     /** Only for a bucket in a jurisdiction such as the EU ("https://<account>.eu.r2.cloudflarestorage.com"); otherwise derived from the account id. */
     BACKUP_R2_ENDPOINT: z.string().default(''),
     BACKUP_R2_PREFIX: z.string().default('makarifor/'),
+    /**
+     * Chat files (Cloudflare R2). Use a bucket that is DIFFERENT from the backup bucket and a token that cannot touch the backups.
+     * Without these, file sharing is switched off and the rest of chat still works.
+     */
+    MEDIA_R2_ACCOUNT_ID: z.string().default(''),
+    MEDIA_R2_BUCKET: z.string().default(''),
+    MEDIA_R2_ACCESS_KEY_ID: z.string().default(''),
+    MEDIA_R2_SECRET_ACCESS_KEY: z.string().default(''),
+    MEDIA_R2_ENDPOINT: z.string().default(''),
+    /** Calls: Cloudflare Realtime TURN (optional but strongly recommended: without it calls fail on restrictive networks). Server-side secrets only. */
+    CF_TURN_KEY_ID: z.string().default(''),
+    CF_TURN_API_TOKEN: z.string().default(''),
+    /** Delete chat messages (and their files) older than this many days. 0 = keep until a person deletes them. */
+    CHAT_RETENTION_DAYS: z.coerce.number().int().min(0).max(3650).default(0),
     BACKUP_PG_BIN_DIR: z.string().default(''),
     BACKUP_ALERT_EMAILS: z.string().default('').transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
     BACKUP_STALE_HOURS: z.coerce.number().int().min(2).max(240).default(26),

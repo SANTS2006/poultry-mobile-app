@@ -10,6 +10,11 @@ import { shouldLock } from '../lib/app-lock';
 import { biometricsAvailable } from '../services/biometrics';
 import { getServices, refreshReference, type Services } from '../services/container';
 import { useLiveNotice } from './live-notice';
+import { useChatLive } from './chat-live';
+import { attachCalls, detachCalls, getCallManager, onCallEvent, syncCurrentCall } from '../services/call-bridge';
+import { handleChatEvent } from '../services/chat-events';
+import { ChatSender } from '../services/chat-sender';
+import { newId } from '../services/platform';
 import { loadThemeMode } from './theme-pref';
 import { configureForegroundNotifications, loadNotifications, registerForPush, routeForNotification } from '../services/push';
 import { clearPersistedQueries, restoreQueries, startPersistingQueries } from '../services/query-persist';
@@ -18,7 +23,7 @@ import { AuthRequiredError, HttpError } from '../sync/types';
 import { BootError, BootSplash } from '../ui/boot';
 import { useAppStore } from './store';
 
-interface AppContextValue { services: Services; api: Endpoints; queryClient: QueryClient }
+interface AppContextValue { services: Services; api: Endpoints; queryClient: QueryClient; chatSender: ChatSender }
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function useApp(): AppContextValue {
@@ -63,13 +68,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const queryClient = makeQueryClient();
         const api = createEndpoints(services.api);
         store.getState().setRetryHandler(() => { void services.engine.retry().catch(() => undefined); });
+        getCallManager(services.api);
+        const chatSender = new ChatSender({
+          api: { send: (id, b) => api.chat.send(id, b), createUpload: (b) => api.chat.createUpload(b), completeUpload: (id) => api.chat.completeUpload(id) },
+          upload: putFile, kv: services.storage, newId,
+          onSent: (m) => handleChatEvent({ qc: queryClient, api, meId: services.session.user?.id ?? '', send: () => undefined, appActive: () => true }, 'chat.message', m),
+        });
         if (cancelled) return;
 
         let realtime: RealtimeClient | null = null;
         let stopAuto: (() => void) | null = null;
         let stopPersist: (() => void) | null = null;
 
-        const stopLive = () => { realtime?.stop(); realtime = null; stopAuto?.(); stopAuto = null; stopPersist?.(); stopPersist = null; };
+        const stopLive = () => { detachCalls(); useChatLive.getState().reset(); realtime?.stop(); realtime = null; stopAuto?.(); stopAuto = null; stopPersist?.(); stopPersist = null; };
         const startLive = async () => {
           stopLive();
           const user = services.session.user;
@@ -79,11 +90,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
             onInvalidate: (keys) => keys.forEach((k) => void queryClient.invalidateQueries({ queryKey: k })),
             onSessionEnded: () => { void services.session.sessionEnded(); },
             onStatus: (s) => store.getState().setRealtime(s),
+            onEvent: (name, payload) => handleChatEvent({
+              qc: queryClient, api, meId: user.id, send: (e, p) => realtime?.send(e, p), appActive: () => AppState.currentState === 'active', onCallEvent,
+            }, name, payload),
+            onReady: () => {
+              void queryClient.invalidateQueries({ queryKey: ['chat'] }); // anything that happened while the socket was down
+              chatSender.retryAll(); void syncCurrentCall(api);
+            },
             onNotification: () => {
               void api.notifications.list({ page: 1, limit: 1 }).then((p) => { const n = p.items[0]; if (n && !n.readAt) useLiveNotice.getState().announce({ id: n.id, title: n.title }); }).catch(() => undefined);
             },
           });
           realtime.start();
+          attachCalls(realtime);
+          void chatSender.restore();
           stopPersist = startPersistingQueries(queryClient, services.storage, user.id);
           void queryClient.prefetchQuery({ queryKey: ['dashboard'], queryFn: () => api.dashboard() }).catch(() => undefined); // warm the home screen while the app is still drawing
           stopAuto = services.engine.startAutoSync();
@@ -95,7 +115,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         unsubs.push(services.session.subscribe(({ status, user }) => {
           store.getState().setSession(status, user);
           if (status === 'signed_in') void startLive();
-          else { stopLive(); if (status === 'signed_out') { queryClient.clear(); void clearPersistedQueries(services.storage); } }
+          else { stopLive(); if (status === 'signed_out') { queryClient.clear(); chatSender.clear(); void clearPersistedQueries(services.storage); } }
         }));
         unsubs.push(services.engine.subscribe((e) => {
           if (e.type === 'summary') store.getState().setSync(e.summary);
@@ -113,7 +133,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (canBio && services.session.status === 'signed_in') store.getState().setLocked(shouldLock({ enabled: true, backgroundedAt: null, now: Date.now(), coldStart: true }));
         if (services.session.status === 'signed_in' && services.session.user) await restoreQueries(queryClient, services.storage, services.session.user.id); // first screen opens with the last known numbers
         if (cancelled) return;
-        setCtx({ services, api, queryClient });
+        setCtx({ services, api, queryClient, chatSender });
         unsubs.push(() => stopLive());
       } catch (e) {
         if (!cancelled) setBootError(e instanceof Error ? e.message : 'The app could not start.');
@@ -144,6 +164,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!r || store.getState().status !== 'signed_in') return;
       const data = r.notification.request.content.data as { notificationId?: string; entityType?: string | null; entityId?: string | null } | undefined;
       if (data?.notificationId && ctx) void ctx.api.notifications.opened(data.notificationId).catch(() => undefined);
+      if ((data as { type?: string } | undefined)?.type === 'call' && ctx) void syncCurrentCall(ctx.api);
       router.push(routeForNotification(data) as never);
     };
     const sub = N.addNotificationResponseReceivedListener(open);
@@ -154,6 +175,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   if (bootError) return <BootError message={bootError} />;
   if (!value) return <BootSplash />;
   return <AppContext.Provider value={value}><QueryClientProvider client={value.queryClient}>{children}</QueryClientProvider></AppContext.Provider>;
+}
+
+/** PUTs a local file to a pre-signed storage URL (the file never passes through our API). */
+async function putFile(uri: string, url: string, headers: Record<string, string>): Promise<void> {
+  const blob = await (await fetch(uri)).blob();
+  const res = await fetch(url, { method: 'PUT', headers, body: blob });
+  if (!res.ok) throw Object.assign(new Error('upload failed'), { status: res.status });
 }
 
 const PUSH_ASKED = 'pref.pushAsked';

@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 import { RecoveryCodes } from '../../features/RecoveryCodes';
+import { CallPresenter } from '../../ui/chat/call-presenter';
 import { useAuthFlow } from '../../state/auth-flow';
 import { CloseButton } from '../../ui/sheet-screen';
 import { typeScale, useColors } from '../../ui/theme';
@@ -13,6 +14,8 @@ export default function AppLayout() {
   const modal = { presentation: 'fullScreenModal', animation: 'slide_from_bottom', headerBackVisible: false, headerLeft: () => <CloseButton label="Close form" /> } as const;
   if (codes) return <RecoveryCodes codes={codes} onDone={() => useAuthFlow.getState().clear()} />;
   return (
+    <>
+    <CallPresenter />
     <Stack screenOptions={{
       // The header always matches the screen, so dark mode never shows a white bar behind the title and status bar.
       headerStyle: { backgroundColor: c.bg }, headerShadowVisible: false, headerTintColor: c.text, headerTitleStyle: { ...typeScale.heading, color: c.text },
@@ -56,6 +59,15 @@ export default function AppLayout() {
       <Stack.Screen name="admin/coop" options={sheet} />
       <Stack.Screen name="admin/prices" options={{ title: 'Prices' }} />
       <Stack.Screen name="admin/notification-settings" options={{ title: 'Notification rules' }} />
+      <Stack.Screen name="messages/index" options={{ title: 'Messages' }} />
+      <Stack.Screen name="messages/new" options={sheet} />
+      <Stack.Screen name="messages/group-new" options={{ ...modal, title: 'New group' }} />
+      <Stack.Screen name="messages/[id]" options={{ title: '' }} />
+      <Stack.Screen name="messages/info/[id]" options={sheet} />
+      <Stack.Screen name="messages/settings" options={sheet} />
+      <Stack.Screen name="calls" options={{ title: 'Calls' }} />
+      <Stack.Screen name="call" options={{ presentation: 'fullScreenModal', headerShown: false, gestureEnabled: false, animation: 'fade' }} />
     </Stack>
+    </>
   );
 }

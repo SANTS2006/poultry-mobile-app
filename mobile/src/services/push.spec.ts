@@ -15,4 +15,11 @@ describe('where a tapped notification goes', () => {
     expect(relatedRoute({ entityType: 'user', entityId: 'u1' })).toBeNull();
     expect(relatedRoute({ entityType: null })).toBeNull();
   });
+
+  it('opens the conversation for a chat push, the call list for a missed call, and never trusts anything but ids', () => {
+    expect(routeForNotification({ type: 'chat', conversationId: 'c1' })).toBe('/messages/c1');
+    expect(routeForNotification({ type: 'missed_call' })).toBe('/calls');
+    expect(routeForNotification({ type: 'call', callId: 'x' })).toBe('/messages');
+    expect(routeForNotification({ type: 'chat' })).toBe('/notifications'); // no id: fall back safely
+  });
 });

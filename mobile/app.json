@@ -13,7 +13,12 @@
       "supportsTablet": false,
       "infoPlist": {
         "NSFaceIDUsageDescription": "Use Face ID to unlock Makarifor Poultry.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "audio"
+        ],
+        "NSMicrophoneUsageDescription": "Makarifor uses the microphone for voice and video calls.",
+        "NSCameraUsageDescription": "Makarifor uses the camera for video calls and photos you share."
       }
     },
     "android": {
@@ -25,20 +30,79 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "allowBackup": false,
-      "permissions": ["USE_BIOMETRIC", "USE_FINGERPRINT", "POST_NOTIFICATIONS"]
+      "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "POST_NOTIFICATIONS",
+        "CAMERA",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "BLUETOOTH",
+        "BLUETOOTH_CONNECT",
+        "ACCESS_NETWORK_STATE",
+        "WAKE_LOCK",
+        "VIBRATE",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_PHONE_CALL"
+      ]
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      ["expo-splash-screen", { "backgroundColor": "#0F5132", "image": "./assets/images/splash-icon.png", "imageWidth": 120, "dark": { "backgroundColor": "#0F5132", "image": "./assets/images/splash-icon.png" } }],
-      ["expo-local-authentication", { "faceIDPermission": "Use Face ID to unlock Makarifor Poultry." }],
-      ["expo-notifications", { "color": "#0F5132" }],
-      ["expo-image-picker", { "photosPermission": "Choose a profile picture from your photos.", "cameraPermission": "Take a profile picture.", "microphonePermission": false }],
-      ["expo-sqlite", { "useSQLCipher": true }]
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0F5132",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 120,
+          "dark": {
+            "backgroundColor": "#0F5132",
+            "image": "./assets/images/splash-icon.png"
+          }
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Use Face ID to unlock Makarifor Poultry."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0F5132"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose a profile picture from your photos.",
+          "cameraPermission": "Take a profile picture.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ],
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "Makarifor uses the camera for video calls.",
+          "microphonePermission": "Makarifor uses the microphone for voice and video calls."
+        }
+      ],
+      "expo-document-picker"
     ],
-    "experiments": { "typedRoutes": true },
+    "experiments": {
+      "typedRoutes": true
+    },
     "extra": {
-      "eas": { "projectId": "REPLACE_WITH_EAS_PROJECT_ID" }
+      "eas": {
+        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+      }
     }
   }
 }

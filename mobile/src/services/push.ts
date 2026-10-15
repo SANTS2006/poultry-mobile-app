@@ -25,6 +25,8 @@ const channels = (N: Notifications): { id: string; name: string; importance: Not
   { id: 'admin', name: 'Administration', importance: N.AndroidImportance.DEFAULT },
   { id: 'system', name: 'System', importance: N.AndroidImportance.DEFAULT },
   { id: 'summary', name: 'Daily summary', importance: N.AndroidImportance.LOW },
+  { id: 'chat', name: 'Messages', importance: N.AndroidImportance.HIGH },
+  { id: 'calls', name: 'Calls', importance: N.AndroidImportance.MAX },
 ];
 
 /** Foreground behaviour: show the banner (the app also refreshes its badge through realtime). */
@@ -32,7 +34,12 @@ export function configureForegroundNotifications(): void {
   const N = loadNotifications();
   if (!N) return;
   N.setNotificationHandler({
-    handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false }),
+    handleNotification: async (n) => {
+      // Chat and calls are shown by the app itself while it is open (live bubbles, the call screen): no duplicate banner on top of them.
+      const type = (n.request.content.data as { type?: string } | undefined)?.type;
+      const inApp = type === 'chat' || type === 'call';
+      return { shouldShowBanner: !inApp, shouldShowList: !inApp, shouldPlaySound: false, shouldSetBadge: false };
+    },
   });
 }
 
@@ -90,7 +97,10 @@ export function relatedRoute(data: { entityType?: string | null; entityId?: stri
  * Where a tapped notification opens: its detail screen, which offers the related record. The push payload carries ids only (never amounts or
  * names); the screen loads details through the authenticated API, so a stolen lock-screen banner reveals nothing.
  */
-export function routeForNotification(data: { notificationId?: string; entityType?: string | null; entityId?: string | null; type?: string } | null | undefined): string {
+export function routeForNotification(data: { notificationId?: string; entityType?: string | null; entityId?: string | null; type?: string; conversationId?: string; callId?: string } | null | undefined): string {
+  if (data?.type === 'chat' && data.conversationId) return `/messages/${data.conversationId}`;
+  if (data?.type === 'call') return '/messages'; // the call screen opens by itself once the ringing call is fetched
+  if (data?.type === 'missed_call') return '/calls';
   if (data?.notificationId) return `/notifications/${data.notificationId}`;
   return relatedRoute(data)?.path ?? '/notifications';
 }

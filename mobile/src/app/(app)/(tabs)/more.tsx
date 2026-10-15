@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Pressable, View } from 'react-native';
 import { useUnreadCount } from '../../../queries/hooks';
+import { useChatUnread } from '../../../queries/chat';
 import { useAppStore, useCan, useCanAny } from '../../../state/store';
 import { Avatar, Badge, Card, NavRow, Screen, SectionHeader, Text } from '../../../ui/components';
 import { Icon } from '../../../ui/icon';
@@ -15,6 +16,8 @@ export default function More() {
   const user = useAppStore((s) => s.user);
   const sync = useAppStore((s) => s.sync);
   const unread = useUnreadCount().data?.unread ?? 0;
+  const chatUnread = useChatUnread();
+  const canChat = useCan('chat.use');
   const attention = sync ? sync.conflict + sync.rejected + sync.blocked : 0;
   const waiting = sync ? sync.pending + sync.syncing : 0;
   const canCustomers = useCan('customers.read');
@@ -40,6 +43,8 @@ export default function More() {
       <View style={{ gap: space.md }}>
         <SectionHeader title="Keep on top of things" />
         <Card style={group}>
+          {canChat ? <NavRow icon="chatbubbles-outline" title="Messages" subtitle="Chat with colleagues and groups" to="/messages" badge={chatUnread > 0 ? <Badge tone="info" label={`${chatUnread} unread`} /> : undefined} /> : null}
+          {canChat ? <NavRow icon="call-outline" title="Calls" subtitle="Voice and video call history" to="/calls" /> : null}
           <NavRow icon="notifications-outline" title="Notifications" subtitle="Alerts and daily summary" to="/notifications" badge={unread > 0 ? <Badge tone="info" label={`${unread} unread`} /> : undefined} />
           <NavRow icon="sync-outline" title="Sync" subtitle="Records saved on this phone" to="/sync" badge={attention > 0 ? <Badge tone="danger" label={`${attention} need attention`} /> : waiting > 0 ? <Badge tone="info" label={`${waiting} waiting to send`} /> : undefined} />
         </Card>

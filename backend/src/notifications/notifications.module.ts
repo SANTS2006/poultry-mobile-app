@@ -28,6 +28,6 @@ import { SummaryService } from './summary.service';
     },
     RecipientsService, NotificationsService, SummaryService, NotificationRules, NotificationScheduler,
   ],
-  exports: [NotificationsService, RecipientsService],
+  exports: [NotificationsService, RecipientsService, PUSH_PROVIDER],
 })
 export class NotificationsModule {}

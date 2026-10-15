@@ -18,6 +18,7 @@ export const PERMISSIONS = [
   'audit.read',
   'notifications.manage',
   'backups.manage',
+  'chat.use', 'chat.groups.create',
 ] as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[number];
@@ -47,22 +48,22 @@ export const ROLES: readonly RoleDefinition[] = [
       'dashboard.read', 'production.read', 'production.create', 'production.update',
       'inventory.read', 'inventory.adjust', 'sales.read', 'sales.create',
       'expenses.read', 'expenses.create', 'customers.read', 'customers.create', 'customers.update',
-      'suppliers.read', 'reports.read',
+      'suppliers.read', 'reports.read', 'chat.use', 'chat.groups.create',
     ],
   },
   {
     code: 'PRODUCTION_STAFF', name: 'Production Staff', description: 'Records egg production; no financial access', mfaRequired: false,
-    permissions: ['production.read', 'production.create'],
+    permissions: ['production.read', 'production.create', 'chat.use'],
   },
   {
     code: 'SALES_STAFF', name: 'Sales Staff', description: 'Records sales and manages customers', mfaRequired: false,
-    permissions: ['inventory.read', 'sales.read', 'sales.create', 'payments.create', 'customers.read', 'customers.create', 'customers.update'],
+    permissions: ['inventory.read', 'sales.read', 'sales.create', 'payments.create', 'customers.read', 'customers.create', 'customers.update', 'chat.use'],
   },
   {
     code: 'ACCOUNTANT', name: 'Accountant / Finance', description: 'Financial visibility and payments', mfaRequired: false,
     permissions: [
       'dashboard.read', 'sales.read', 'expenses.read', 'payments.read', 'payments.create',
-      'customers.read', 'customers.financial', 'suppliers.read', 'reports.read', 'reports.export',
+      'customers.read', 'customers.financial', 'suppliers.read', 'reports.read', 'reports.export', 'chat.use',
     ],
   },
 ];

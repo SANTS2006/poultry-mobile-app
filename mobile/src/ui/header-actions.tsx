@@ -4,9 +4,10 @@ import { Pressable, View } from 'react-native';
 import { OverlayModal } from './overlay-modal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnreadCount } from '../queries/hooks';
+import { useChatUnread } from '../queries/chat';
 import { useSignOut } from '../state/sign-out';
 import { useThemeMode } from '../state/use-theme-mode';
-import { useAppStore } from '../state/store';
+import { useAppStore, useCan } from '../state/store';
 import { Avatar, Text } from './components';
 import { GlassSurface, IS_IOS } from './glass';
 import { Icon, type IconName } from './icon';
@@ -23,6 +24,25 @@ export function NotificationBell() {
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={unreadLabel(unread)} onPress={() => router.push('/notifications')} hitSlop={6} style={{ width: TOUCH, height: TOUCH, alignItems: 'center', justifyContent: 'center' }}>
       <Icon name={unread > 0 ? 'notifications' : 'notifications-outline'} size="md" color={c.text} />
+      {unread > 0 ? (
+        <View style={{ position: 'absolute', top: 4, right: 2, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: radius.pill, backgroundColor: c.danger, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: c.bg }}>
+          <Text variant="caption" bold color={c.onDanger} style={{ fontSize: 10, lineHeight: 12 }}>{unread > 99 ? '99+' : unread}</Text>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
+
+/** Opens the conversation list; the badge counts unread messages and updates as they arrive. */
+export function MessagesButton() {
+  const router = useRouter();
+  const c = useColors();
+  const allowed = useCan('chat.use');
+  const unread = useChatUnread();
+  if (!allowed) return null;
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={unread > 0 ? `Messages, ${unread} unread` : 'Messages'} onPress={() => router.push('/messages' as never)} hitSlop={6} style={{ width: TOUCH, height: TOUCH, alignItems: 'center', justifyContent: 'center' }}>
+      <Icon name={unread > 0 ? 'chatbubbles' : 'chatbubbles-outline'} size="md" color={c.text} />
       {unread > 0 ? (
         <View style={{ position: 'absolute', top: 4, right: 2, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: radius.pill, backgroundColor: c.danger, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: c.bg }}>
           <Text variant="caption" bold color={c.onDanger} style={{ fontSize: 10, lineHeight: 12 }}>{unread > 99 ? '99+' : unread}</Text>
@@ -87,5 +107,5 @@ function MenuItem({ icon, label, onPress, danger, busy }: { icon: IconName; labe
 
 /** Top-right of every main screen: notifications, then profile. */
 export function HeaderActions() {
-  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs, marginRight: space.sm }}><NotificationBell /><ProfileButton /></View>;
+  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs, marginRight: space.sm }}><MessagesButton /><NotificationBell /><ProfileButton /></View>;
 }

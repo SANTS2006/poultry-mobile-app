@@ -23,7 +23,7 @@ export function CloseButton({ label = 'Close' }: { label?: string }) {
  * Content of a bottom-sheet form (presented by the navigator as a native sheet: swipe down or tap ✕ to close). Used for adding and
  * editing things; bigger forms are presented as full-screen modals instead.
  */
-export function SheetScreen({ title, children, subtitle, refreshing, onRefresh }: { title: string; subtitle?: string; children: ReactNode; refreshing?: boolean; onRefresh?: () => void }) {
+export function SheetScreen({ title, children, subtitle, refreshing, onRefresh, scroll = true }: { title: string; subtitle?: string; children: ReactNode; refreshing?: boolean; onRefresh?: () => void; /** false: the content brings its own scrolling list (do not nest it in a scroll view) */ scroll?: boolean }) {
   const c = useColors();
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -34,7 +34,7 @@ export function SheetScreen({ title, children, subtitle, refreshing, onRefresh }
         </View>
         <CloseButton />
       </View>
-      <Screen refreshing={refreshing} onRefresh={onRefresh}>{children}</Screen>
+      {scroll ? <Screen refreshing={refreshing} onRefresh={onRefresh}>{children}</Screen> : <View style={{ flex: 1 }}>{children}</View>}
     </View>
   );
 }

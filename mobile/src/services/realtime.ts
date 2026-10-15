@@ -39,6 +39,9 @@ export const REALTIME_EVENTS = [
   'expense.updated', 'customer.created', 'customer.updated', 'dashboard.invalidate', 'notification.created',
 ] as const;
 
+/** Chat, presence and call events. Unlike the business events above these carry data the phone uses directly (the server only sends them to the people allowed to see them). */
+export const CHAT_EVENTS = ['chat.message', 'chat.message.updated', 'chat.receipt', 'chat.typing', 'chat.conversation', 'presence', 'call.incoming', 'call.updated', 'call.signal'] as const;
+
 export interface RealtimeDeps {
   url: string;
   factory: SocketFactory;
@@ -51,6 +54,10 @@ export interface RealtimeDeps {
   onStatus?: (s: 'connected' | 'disconnected') => void;
   /** a notification was just created for this user (the app shows a small in-app banner) */
   onNotification?: () => void;
+  /** a chat / presence / call event arrived */
+  onEvent?: (name: string, payload: any) => void;
+  /** the socket (re)connected: refetch anything that may have changed while it was down */
+  onReady?: () => void;
 }
 
 /**
@@ -73,7 +80,7 @@ export class RealtimeClient {
       auth: (cb) => { this.d.getToken().then((token) => cb({ token })).catch(() => cb({ token: '' })); },
     });
     this.socket = s;
-    s.on('ready', () => { this.d.onStatus?.('connected'); this.subscribe(); });
+    s.on('ready', () => { this.d.onStatus?.('connected'); this.subscribe(); this.d.onReady?.(); });
     s.on('disconnect', () => this.d.onStatus?.('disconnected'));
     s.on('auth.expiring', () => { void this.reauth(); });
     s.on('auth.revoked', (p: { reason?: string }) => {
@@ -82,6 +89,7 @@ export class RealtimeClient {
       this.d.onSessionEnded();
     });
     s.on('subscription.revoked', () => undefined); // permissions changed: the topic simply stops arriving
+    for (const e of CHAT_EVENTS) s.on(e, (payload: unknown) => this.d.onEvent?.(e, payload));
     for (const e of REALTIME_EVENTS) {
       s.on(e, () => {
         this.d.onInvalidate(invalidationsFor(e));
@@ -94,6 +102,18 @@ export class RealtimeClient {
     this.socket?.disconnect();
     this.socket = null;
     this.d.onStatus?.('disconnected');
+  }
+
+  /** Fire-and-forget (typing indicators, delivery acknowledgements). */
+  send(event: string, payload: unknown): void { if (this.socket?.connected) this.socket.emit(event, payload); }
+
+  /** Emits and waits for the server's `{ ok }` answer (call signaling needs to know whether it was accepted). Times out after 5 s. */
+  request(event: string, payload: unknown): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (!this.socket?.connected) return resolve(false);
+      const t = setTimeout(() => resolve(false), 5000);
+      this.socket.emit(event, payload, (res: unknown) => { clearTimeout(t); resolve((res as { ok?: boolean } | null)?.ok === true); });
+    });
   }
 
   private subscribe(): void {

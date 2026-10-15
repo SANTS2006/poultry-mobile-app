@@ -8,6 +8,10 @@ import type { AuthUser } from '../auth/auth.types';
 import { AuthenticationService } from '../auth/guards/jwt-auth.guard';
 import { DomainEvent, DomainEvents } from '../domain/events.service';
 import { FarmService } from '../domain/farm.service';
+import { CallService } from '../chat/call.service';
+import { ChatService } from '../chat/chat.service';
+import { RealtimeEmitter } from './realtime-emitter.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { allFarmsRoom, DASHBOARD_TRIGGERS, EVENT_TOPIC, farmRoom, isTopic, Topic, TOPIC_PERMISSION, userRoom } from './topics';
 
 const MAX_SOCKETS_PER_USER = 5;
@@ -52,7 +56,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   constructor(
     private readonly authn: AuthenticationService, private readonly events: DomainEvents,
-    private readonly farms: FarmService, private readonly logger: PinoLogger,
+    private readonly farms: FarmService, private readonly logger: PinoLogger, private readonly emitter: RealtimeEmitter,
+    private readonly chat: ChatService, private readonly calls: CallService, private readonly prisma: PrismaService,
   ) {
     this.logger.setContext(RealtimeGateway.name);
   }
@@ -72,6 +77,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   afterInit(server: Server): void {
+    this.emitter.server = server;
     server.use((socket, next) => {
       this.authenticate(socket).then(() => next()).catch((e: unknown) => {
         // one generic error for every failure: nothing about why (or whether the user exists) is revealed
@@ -96,12 +102,30 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     void socket.join(userRoom(d.user.id));
     this.armExpiry(socket);
     socket.emit('ready', { userId: d.user.id, expiresAt: new Date(d.expMs).toISOString() });
+    if (this.emitter.connected(d.user.id)) { this.calls.onUserOnline(d.user.id); void this.broadcastPresence(d.user.id, true); }
   }
 
   handleDisconnect(socket: Socket): void {
     const d = socket.data as SocketData | undefined;
     if (d?.warnTimer) clearTimeout(d.warnTimer);
     if (d?.killTimer) clearTimeout(d.killTimer);
+    this.signalRate.delete(socket.id);
+    if (d?.user && this.emitter.disconnected(d.user.id)) {
+      const uid = d.user.id;
+      this.calls.onUserOffline(uid);
+      void this.prisma.profile.updateMany({ where: { userId: uid }, data: { lastSeenAt: new Date() } }).catch(() => undefined);
+      void this.broadcastPresence(uid, false);
+    }
+  }
+
+  /** Tells the people this user shares a conversation with that they came online / went offline. Ids only; no message data. */
+  private async broadcastPresence(userId: string, online: boolean): Promise<void> {
+    try {
+      const peers = await this.prisma.$queryRaw<{ userId: string }[]>`
+        SELECT DISTINCT b."userId" FROM "ConversationMember" a JOIN "ConversationMember" b ON b."conversationId" = a."conversationId" AND b."userId" <> a."userId"
+        WHERE a."userId" = ${userId}::uuid AND a."leftAt" IS NULL AND b."leftAt" IS NULL LIMIT 300`;
+      this.emitter.toUsers(peers.map((p) => p.userId), 'presence', { userId, online, at: new Date().toISOString() });
+    } catch (e) { this.logger.warn({ err: e instanceof Error ? e.message : 'presence failed' }, 'Presence broadcast failed'); }
   }
 
   private armExpiry(socket: Socket): void {
@@ -152,6 +176,57 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       d.subs.delete(t);
     }
     return { ok: true };
+  }
+
+  // ───────────── chat and calls (all authorised by the services; the gateway only relays) ─────────────
+
+  private readonly typingAt = new Map<string, number>();
+
+  @SubscribeMessage('chat.typing')
+  async typing(@ConnectedSocket() socket: Socket, @MessageBody() body: unknown): Promise<Ack> {
+    const limited = this.limit(socket);
+    if (limited) return limited;
+    const id = (body as { conversationId?: unknown } | null)?.conversationId;
+    const user = sd(socket).user;
+    if (typeof id !== 'string' || id.length !== 36 || !user.permissions.includes('chat.use')) return { ok: false, error: 'invalid_request' };
+    const key = `${user.id}:${id}`;
+    const now = Date.now();
+    if (now - (this.typingAt.get(key) ?? 0) < 1500) return { ok: true }; // at most one indicator every 1.5 s per conversation
+    this.typingAt.set(key, now);
+    if (this.typingAt.size > 5000) for (const [k, t] of this.typingAt) if (now - t > 10_000) this.typingAt.delete(k);
+    try {
+      const members = await this.chat.activeMemberIds(id);
+      if (!members.includes(user.id)) return { ok: false, error: 'forbidden' };
+      this.emitter.toUsers(members.filter((m) => m !== user.id), 'chat.typing', { conversationId: id, userId: user.id, name: user.fullName });
+      return { ok: true };
+    } catch { return { ok: false, error: 'failed' }; }
+  }
+
+  /** The phone confirms it has received messages up to a sequence number: this (and only this) produces the "delivered" tick. */
+  @SubscribeMessage('chat.delivered')
+  async delivered(@ConnectedSocket() socket: Socket, @MessageBody() body: unknown): Promise<Ack> {
+    const limited = this.limit(socket);
+    if (limited) return limited;
+    const b = body as { conversationId?: unknown; upToSeq?: unknown } | null;
+    const user = sd(socket).user;
+    if (typeof b?.conversationId !== 'string' || typeof b.upToSeq !== 'number' || !Number.isFinite(b.upToSeq) || !user.permissions.includes('chat.use')) return { ok: false, error: 'invalid_request' };
+    try { return (await this.chat.markDelivered(user.id, b.conversationId, b.upToSeq)) ? { ok: true } : { ok: false, error: 'forbidden' }; } catch { return { ok: false, error: 'failed' }; }
+  }
+
+  /** WebRTC offer / answer / ICE candidates between the two people on a live call. Bursty by nature, so it has its own, larger allowance. */
+  private readonly signalRate = new Map<string, { start: number; count: number }>();
+
+  @SubscribeMessage('call.signal')
+  async signal(@ConnectedSocket() socket: Socket, @MessageBody() body: unknown): Promise<Ack> {
+    const user = sd(socket).user;
+    const now = Date.now();
+    const r = this.signalRate.get(socket.id) ?? { start: now, count: 0 };
+    if (now - r.start > RATE_WINDOW_MS) { r.start = now; r.count = 0; }
+    this.signalRate.set(socket.id, r);
+    if (++r.count > 400) return { ok: false, error: 'rate_limited' };
+    const b = body as { callId?: unknown; data?: unknown } | null;
+    if (typeof b?.callId !== 'string' || b.callId.length !== 36 || !user.permissions.includes('chat.use')) return { ok: false, error: 'invalid_request' };
+    try { return (await this.calls.relay(user.id, b.callId, b.data)) ? { ok: true } : { ok: false, error: 'forbidden' }; } catch { return { ok: false, error: 'failed' }; }
   }
 
   /** The client obtained a fresh access token (refresh flow) and extends the connection. Must be the same user. */
