@@ -8,7 +8,7 @@ import { CurrentUser, Meta } from './decorators/current-user.decorator';
 import { AnyAuthenticated } from './decorators/permissions.decorator';
 import { Public } from './decorators/public.decorator';
 import {
-  ChangeEmailDto, FirstPasswordDto, ChangePasswordDto, UpdateProfileDto, EmailOnlyDto, LoginDto, MfaConfirmDto, MfaLoginDto, RefreshDto, ResetPasswordDto, StepUpDto, TokenDto,
+  ChangeEmailDto, GoogleLoginDto, FirstPasswordDto, ChangePasswordDto, UpdateProfileDto, EmailOnlyDto, LoginDto, MfaConfirmDto, MfaLoginDto, RefreshDto, ResetPasswordDto, StepUpDto, TokenDto,
 } from './dto/auth.dto';
 import { AuthenticationService, bearerToken } from './guards/jwt-auth.guard';
 import { MfaService } from './mfa.service';
@@ -32,6 +32,12 @@ export class AuthController {
   @Public() @Throttle(STRICT) @HttpCode(200) @Post('login')
   login(@Body() dto: LoginDto, @Meta() meta: RequestMeta) {
     return this.auth.login(dto.email, dto.password, meta);
+  }
+
+  /** "Sign in with Google": only for people an administrator has already added; the account is looked up by the Google-verified e-mail address. */
+  @Public() @Throttle(STRICT) @HttpCode(200) @Post('google')
+  google(@Body() dto: GoogleLoginDto, @Meta() meta: RequestMeta) {
+    return this.auth.loginWithGoogle(dto.idToken, meta);
   }
 
   @Public() @Throttle(STRICT) @HttpCode(200) @Post('mfa/verify')

@@ -19,6 +19,8 @@ const schema = z
       .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
     APP_LINK_BASE: z.string().default('makarifor://'),
     /** Brevo (https://www.brevo.com) transactional e-mail. Without a key, development/test capture messages in memory instead of sending. */
+    /** Google OAuth client IDs (web, plus Android/iOS if used), comma separated. Empty = "Sign in with Google" is off. */
+    GOOGLE_CLIENT_IDS: z.string().default(''),
     BREVO_API_KEY: z.string().default(''),
     /** Sender address; it must be a verified sender in Brevo. */
     EMAIL_FROM: z.string().default(''),

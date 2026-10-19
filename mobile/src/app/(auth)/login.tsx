@@ -5,6 +5,7 @@ import { APP_ENV } from '../../config';
 import { describeError } from '../../lib/errors';
 import { IS_EXPO_GO } from '../../lib/runtime';
 import { email, required, useForm } from '../../lib/validation';
+import { getGoogleIdToken, GoogleCancelled, GoogleUnavailable, googleConfigured } from '../../services/google-signin';
 import { useApp } from '../../state/app';
 import { useAuthFlow } from '../../state/auth-flow';
 import { AuthShell } from '../../ui/auth-shell';
@@ -59,6 +60,20 @@ export default function Login() {
     }
   }
 
+  async function google() {
+    setBusy(true); setError(null);
+    try {
+      const out = await services.session.loginWithGoogle(await getGoogleIdToken());
+      if (out.kind === 'mfa_required') { flow.startMfa(out.mfaToken); router.push('/mfa'); }
+      else if (out.kind === 'mfa_setup_required') { flow.startSetup(out.setupToken); router.push('/mfa-setup'); }
+      else if (out.kind === 'password_change_required') { flow.startPasswordChange(out.passwordToken); router.push('/first-password' as never); }
+    } catch (err) {
+      if (!(err instanceof GoogleCancelled)) setError(err instanceof GoogleUnavailable ? err.message : describeError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const clearError = () => { if (error) setError(null); };
   const emailField = form.field('email');
   const passwordField = form.field('password');
@@ -90,6 +105,15 @@ export default function Login() {
           </Pressable>
         </Row>
         <Button pill title="Sign in" onPress={() => void submit()} busy={busy} testID="signin" />
+        {googleConfigured() ? (
+          <>
+            <Row style={{ alignItems: 'center', gap: space.md }}>
+              <View style={{ flex: 1, height: 1, backgroundColor: c.border }} /><Text variant="caption" muted>or</Text><View style={{ flex: 1, height: 1, backgroundColor: c.border }} />
+            </Row>
+            <Button pill variant="secondary" icon="logo-google" title="Continue with Google" onPress={() => void google()} disabled={busy} testID="google-signin" />
+            <Text variant="caption" muted style={{ textAlign: 'center' }}>Only accounts added by your administrator can sign in.</Text>
+          </>
+        ) : null}
       </View>
 
       {IS_EXPO_GO || APP_ENV !== 'production' ? (

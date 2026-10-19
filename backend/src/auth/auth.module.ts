@@ -1,3 +1,4 @@
+import { GoogleIdentityService } from './google-identity.service';
 import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -29,7 +30,7 @@ import { TokenService } from './token.service';
   controllers: [AuthController],
   providers: [
     PasswordService, EncryptionService, TokenService, SessionService, MfaService, EmailTokenService, PasswordResetService, PasswordHistoryService,
-    AuthService, AuthenticationService, JwtAuthGuard, PermissionsGuard,
+    AuthService, AuthenticationService, JwtAuthGuard, PermissionsGuard, GoogleIdentityService,
   ],
   exports: [PasswordService, EncryptionService, TokenService, SessionService, MfaService, EmailTokenService, PasswordResetService, PasswordHistoryService, AuthService, AuthenticationService, JwtAuthGuard, PermissionsGuard],
 })

@@ -1,5 +1,5 @@
 import {
-  BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, UnauthorizedException,
+  BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, NotFoundException, UnauthorizedException,
 } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DomainEvents } from '../domain/events.service';
@@ -8,6 +8,7 @@ import { MailComposer } from '../mail/mail-composer.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthUser, RequestMeta } from './auth.types';
 import { EmailTokenService } from './email-token.service';
+import { GoogleIdentityService } from './google-identity.service';
 import { MfaService } from './mfa.service';
 import { PasswordHistoryService } from './password-history.service';
 import { PasswordResetService } from './password-reset.service';
@@ -49,6 +50,7 @@ export class AuthService {
     private readonly resets: PasswordResetService,
     private readonly history: PasswordHistoryService,
     private readonly events: DomainEvents,
+    private readonly google: GoogleIdentityService,
   ) {}
 
   // ───────────── login ─────────────
@@ -99,8 +101,30 @@ export class AuthService {
     return this.afterPassword(user, meta, mfaRoles);
   }
 
+  /**
+   * Google sign-in. Google proves the e-mail address; WE decide who may enter: only an account an administrator already created (active, or invited
+   * and not yet activated). Anyone else is told to contact the administrator, and nothing is created. MFA rules still apply afterwards.
+   */
+  async loginWithGoogle(idToken: string, meta: RequestMeta): Promise<LoginResult> {
+    const g = await this.google.verify(idToken);
+    const user = g.emailVerified ? await this.prisma.user.findUnique({ where: { email: g.email } }) : null;
+    if (!user || user.deletedAt) {
+      await this.audit.record({ action: 'auth.login.google_unknown', entityType: 'user', after: { email: g.email }, ip: meta.ip, requestId: meta.requestId });
+      throw new NotFoundException('Account not found. Please contact your administrator.');
+    }
+    if (user.status === 'DISABLED') throw new ForbiddenException('Your account has been disabled. Please contact an administrator.');
+    if (user.status !== 'ACTIVE' && user.status !== 'INVITED') throw new ForbiddenException('Your account is not active. Please contact an administrator.');
+    if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) throw new HttpException('Too many failed attempts. Please try again later.', HttpStatus.TOO_MANY_REQUESTS);
+    if (user.status === 'INVITED' || !user.emailVerified) {
+      // Google has just proven they own the invited address, so the invitation is accepted (the temporary password stays valid until replaced).
+      await this.prisma.user.update({ where: { id: user.id }, data: { status: 'ACTIVE', emailVerified: true } });
+      await this.audit.record({ action: 'auth.invite.accepted_via_google', userId: user.id, entityType: 'user', entityId: user.id, ip: meta.ip, requestId: meta.requestId });
+    }
+    return this.afterPassword(user, meta, undefined, 'google');
+  }
+
   /** What happens once the password step is done: second factor, forced MFA enrolment, or a session. */
-  private async afterPassword(user: { id: string; mfaEnabled: boolean; tokenVersion: number }, meta: RequestMeta, mfaRoles?: number): Promise<LoginResult> {
+  private async afterPassword(user: { id: string; mfaEnabled: boolean; tokenVersion: number }, meta: RequestMeta, mfaRoles?: number, via = 'password'): Promise<LoginResult> {
     if (user.mfaEnabled) {
       return { status: 'mfa_required', mfaToken: this.tokens.signPurpose('mfa', user.id, user.tokenVersion) };
     }
@@ -110,7 +134,7 @@ export class AuthService {
       await this.audit.record({ action: 'auth.login.mfa_setup_required', userId: user.id, ip: meta.ip, requestId: meta.requestId });
       return { status: 'mfa_setup_required', setupToken: this.tokens.signPurpose('mfa-setup', user.id, user.tokenVersion) };
     }
-    return this.startSession(user.id, meta, 'password', user.tokenVersion);
+    return this.startSession(user.id, meta, via, user.tokenVersion);
   }
 
   /** Second step of login: TOTP or recovery code against the short-lived mfa token. */

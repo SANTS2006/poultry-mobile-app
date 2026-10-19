@@ -97,6 +97,11 @@ export class SessionManager {
     return this.handle(await this.pub.post<AuthResponse>('/v1/auth/login', { email: email.trim(), password }));
   }
 
+  /** "Sign in with Google": the server accepts only accounts an administrator already created. */
+  async loginWithGoogle(idToken: string): Promise<LoginOutcome> {
+    return this.handle(await this.pub.post<AuthResponse>('/v1/auth/google', { idToken }));
+  }
+
   async verifyMfa(mfaToken: string, proof: { code?: string; recoveryCode?: string }): Promise<LoginOutcome> {
     return this.handle(await this.pub.post<AuthResponse>('/v1/auth/mfa/verify', { mfaToken, ...proof }));
   }

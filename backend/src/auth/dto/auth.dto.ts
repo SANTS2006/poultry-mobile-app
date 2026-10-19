@@ -9,6 +9,10 @@ export class LoginDto {
   @IsString() @MinLength(1) @MaxLength(128) password!: string;
 }
 
+export class GoogleLoginDto {
+  @IsString() @Length(100, 4000) idToken!: string;
+}
+
 export class RefreshDto {
   @IsString() @Length(20, 200) refreshToken!: string;
 }

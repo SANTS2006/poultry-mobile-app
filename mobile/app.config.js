@@ -10,5 +10,10 @@ module.exports = () => {
     plugins.push(['expo-build-properties', { android: { usesCleartextTraffic: true } }]);
     ios.infoPlist.NSAppTransportSecurity = { NSAllowsLocalNetworking: true };
   }
+  if ((process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '').trim()) {
+    // iOS needs the "reversed client id" of the iOS OAuth client (looks like com.googleusercontent.apps.123-abc) as a URL scheme.
+    const iosUrlScheme = (process.env.GOOGLE_IOS_URL_SCHEME ?? '').trim();
+    plugins.push(iosUrlScheme ? ['@react-native-google-signin/google-signin', { iosUrlScheme }] : '@react-native-google-signin/google-signin');
+  }
   return { ...base, ios, plugins };
 };
