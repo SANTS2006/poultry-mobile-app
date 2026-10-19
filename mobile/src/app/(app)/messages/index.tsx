@@ -1,5 +1,5 @@
 import { Stack, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import type { Page } from '../../../api/types';
 import { formatInt } from '../../../lib/format';
@@ -49,9 +49,8 @@ export default function Messages() {
   const [search, setSearch] = useState('');
   const term = search.trim();
   const canGroups = useCan('chat.groups.create');
-  return (
-    <>
-      <Stack.Screen options={{
+  // memoized: fresh header functions on every render make the navigator re-render this screen in a loop
+  const headerOptions = useMemo(() => ({
         title: 'Messages',
         headerRight: () => (
           <View style={{ flexDirection: 'row', gap: space.xs }}>
@@ -60,7 +59,10 @@ export default function Messages() {
             <Pressable accessibilityRole="button" accessibilityLabel="New message" hitSlop={8} onPress={() => router.push('/messages/new' as never)} style={{ padding: space.sm }}><Icon name="create-outline" size="md" color={c.text} /></Pressable>
           </View>
         ),
-      }} />
+      }), [router, c]);
+  return (
+    <>
+      <Stack.Screen options={headerOptions} />
       <PagedList<ConversationSummary & { id: string }>
         queryKey={term ? [...chatKeys.conversations, 'search', term] : chatKeys.conversations}
         fetchPage={(page, limit): Promise<Page<ConversationSummary>> => api.chat.conversations({ page, limit, search: term || undefined })}

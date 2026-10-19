@@ -36,7 +36,7 @@ export function useBearer(): Record<string, string> | undefined {
   const [h, setH] = useState<Record<string, string> | undefined>();
   useEffect(() => {
     let live = true;
-    const load = () => services.tokens.getAccessToken().then((t) => { if (live) setH({ Authorization: `Bearer ${t}` }); }).catch(() => undefined);
+    const load = () => services.tokens.getAccessToken().then((t) => { if (live) setH((old) => (old?.Authorization === `Bearer ${t}` ? old : { Authorization: `Bearer ${t}` })); }).catch(() => undefined);
     void load();
     const t = setInterval(load, 8 * 60_000);
     return () => { live = false; clearInterval(t); };
