@@ -2,6 +2,7 @@ import { Inject, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import type { Env } from '../config/env';
+import { isConnectError } from '../prisma/connection';
 import { CallService } from './call.service';
 import { ChatService } from './chat.service';
 
@@ -18,7 +19,7 @@ export class ChatScheduler implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     if (this.config.get('APP_ENV', { infer: true }) === 'test') return;
-    this.timer = setInterval(() => { void this.tick().catch((e) => this.logger.error({ err: e }, 'Chat housekeeping failed')); }, 15_000);
+    this.timer = setInterval(() => { void this.tick().catch((e) => (isConnectError(e, true) ? this.logger.warn('Database not reachable; chat housekeeping skipped until the next run') : this.logger.error({ err: e }, 'Chat housekeeping failed'))); }, 15_000);
     this.timer.unref();
   }
   onModuleDestroy(): void { if (this.timer) clearInterval(this.timer); }

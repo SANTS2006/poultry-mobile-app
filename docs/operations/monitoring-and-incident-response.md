@@ -35,3 +35,13 @@ Almost all of the time in a request is **round trips to the database**: each que
 What the code now does: fewer queries per request (cached sign-in state for 10 s with immediate invalidation, cached settings/units/farm/coops/shifts, one-statement stock updates, parallel dashboard and reference queries, dashboard sections cached 15 s and emptied by any business event), a 60 s transaction limit, and on the phone small sync batches (5 records), a 90 s push limit, and last-known answers kept on the phone so screens open instantly.
 
 What only deployment can fix: **put the API in the same region as the database**. Check with `GET /health/ready`: `dbRoundTripMs` should be under about 20 ms in production; if it is hundreds of milliseconds, move the API or the Neon project (and use Neon's pooled connection string, host containing `-pooler`).
+
+
+## Database connection drops (P1001 / P1017 / P2024)
+Neon pauses an idle compute after ~5 minutes; the next connection waits for it to wake, and connections that were open are closed. Prisma's defaults (5 s connect timeout, a pool that keeps handing out dead connections) turned that into "Can't reach database server" errors that kept repeating. What the API now does by itself:
+- adds `connect_timeout=30`, `pool_timeout=30` (and `pgbouncer=true` for the `-pooler` host) to `DATABASE_URL` unless you set them;
+- keeps the database awake with a tiny query every 4 minutes whenever the host is `*.neon.tech` (override with `DB_KEEPALIVE_SECONDS`, `0` = off);
+- retries a query that could not reach the database after 0.5, 1, 2 and 4 s; reads are also retried after "connection closed" (P1017), writes only when the statement provably never ran (P1001/P1002);
+- **resets the connection pool** when that happens (a Prisma pool otherwise stays broken after an outage until the client reconnects) — at most once every 1.5 s;
+- answers 503 "cannot reach its database, try again" to the phone instead of a 500, and logs one short warning line instead of a stack trace.
+Verified: a test stopped a real PostgreSQL for ~1 s while four reads were in flight; all four succeeded about 0.6 s after it came back and a write worked straight after. Not verified: Neon's own wake-up timing, or a network that blocks port 5432 for minutes (then requests fail with 503 after ~8 s, by design).

@@ -4,6 +4,7 @@ import { PinoLogger } from 'nestjs-pino';
 import type { Env } from '../config/env';
 import { SettingsService } from '../domain/settings.service';
 import { localParts } from '../notifications/format';
+import { isConnectError } from '../prisma/connection';
 import { PrismaService } from '../prisma/prisma.service';
 import { BackupService } from './backup.service';
 
@@ -29,7 +30,7 @@ export class BackupScheduler implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     if (this.config.get('APP_ENV', { infer: true }) === 'test') return; // tests call tick() directly
-    this.timer = setInterval(() => { void this.tick().catch((e) => this.logger.error({ err: e }, 'Backup scheduler tick failed')); }, TICK_MS);
+    this.timer = setInterval(() => { void this.tick().catch((e) => (isConnectError(e, true) ? this.logger.warn('Database not reachable; backup scheduler skipped until the next minute') : this.logger.error({ err: e }, 'Backup scheduler tick failed'))); }, TICK_MS);
     this.timer.unref();
   }
   onModuleDestroy(): void { if (this.timer) clearInterval(this.timer); }
