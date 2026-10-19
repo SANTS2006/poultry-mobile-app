@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 
 /**
  * Connection settings that make a serverless database (Neon) behave on a real network:
- *  - connect_timeout 30 s (Prisma's default is 5 s, shorter than a Neon wake-up from sleep, which is what shows up as "P1001 can't reach database server");
+ *  - connect_timeout 10 s (Prisma's default is 5 s, shorter than a Neon wake-up from sleep, which is what shows up as "P1001 can't reach database server");
  *  - pool_timeout 30 s (wait for a free connection instead of failing after 10 s while a slow wake-up holds them all);
  *  - pgbouncer=true for Neon's pooled host ("-pooler"), which Prisma needs there.
  * Anything you set yourself in DATABASE_URL wins.
@@ -11,7 +11,7 @@ export function withConnectionDefaults(url: string | undefined): string | undefi
   if (!url) return url;
   try {
     const u = new URL(url);
-    if (!u.searchParams.has('connect_timeout')) u.searchParams.set('connect_timeout', '30');
+    if (!u.searchParams.has('connect_timeout')) u.searchParams.set('connect_timeout', '10');
     if (!u.searchParams.has('pool_timeout')) u.searchParams.set('pool_timeout', '30');
     if (/-pooler\./.test(u.hostname) && !u.searchParams.has('pgbouncer')) u.searchParams.set('pgbouncer', 'true');
     return u.toString();
@@ -36,6 +36,8 @@ export function isConnectError(e: unknown, includeClosed = false): boolean {
 export const READ_OPERATIONS = new Set(['findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow', 'findMany', 'count', 'aggregate', 'groupBy', '$queryRaw', '$queryRawUnsafe']);
 
 const DELAYS_MS = [500, 1000, 2000, 4000];
+/** Stop retrying once this much time has passed, so a request answers with a clear "try again" (503) before the phone's own 20 s timeout gives up. */
+const BUDGET_MS = 14_000;
 
 /**
  * Runs `fn`, retrying (after 0.5, 1, 2 and 4 s) when the database could not be reached, e.g. while it wakes from sleep or the network blips.
@@ -43,9 +45,10 @@ const DELAYS_MS = [500, 1000, 2000, 4000];
  * (every query failing with P1017) long after the database is back.
  */
 export async function retryConnect<T>(fn: () => Promise<T>, delays: readonly number[] = DELAYS_MS, sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)), includeClosed = false, onRetry?: () => Promise<void>): Promise<T> {
+  const started = Date.now();
   for (let i = 0; ; i++) {
     try { return await fn(); } catch (e) {
-      if (!isConnectError(e, includeClosed) || i >= delays.length) throw e;
+      if (!isConnectError(e, includeClosed) || i >= delays.length || Date.now() - started + delays[i] > BUDGET_MS) throw e;
       await sleep(delays[i]);
       if (onRetry) { try { await onRetry(); } catch { /* the next attempt reports the real problem */ } }
     }

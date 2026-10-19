@@ -23,7 +23,8 @@
     "backup:cli": "ts-node scripts/backup-cli.ts",
     "import:excel": "ts-node scripts/import-excel.ts",
     "test:mobile": "jest --config jest.mobile.config.js",
-    "typecheck:mobile": "tsc --noEmit -p ../mobile/tsconfig.sync.json"
+    "typecheck:mobile": "tsc --noEmit -p ../mobile/tsconfig.sync.json",
+    "db:check": "ts-node scripts/db-check.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

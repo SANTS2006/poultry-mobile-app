@@ -7,7 +7,7 @@ const init = (code: string) => new Prisma.PrismaClientInitializationError('x', '
 describe('database connection defaults', () => {
   it('adds generous timeouts, and pgbouncer for the Neon pooled host, without overriding what is set', () => {
     const u = new URL(withConnectionDefaults('postgresql://u:p@ep-x-pooler.us-east-2.aws.neon.tech/db?sslmode=require') as string);
-    expect(u.searchParams.get('connect_timeout')).toBe('30'); expect(u.searchParams.get('pool_timeout')).toBe('30'); expect(u.searchParams.get('pgbouncer')).toBe('true'); expect(u.searchParams.get('sslmode')).toBe('require');
+    expect(u.searchParams.get('connect_timeout')).toBe('10'); expect(u.searchParams.get('pool_timeout')).toBe('30'); expect(u.searchParams.get('pgbouncer')).toBe('true'); expect(u.searchParams.get('sslmode')).toBe('require');
     const d = new URL(withConnectionDefaults('postgresql://u:p@ep-x.us-east-2.aws.neon.tech/db?sslmode=require') as string);
     expect(d.searchParams.has('pgbouncer')).toBe(false);
     const own = new URL(withConnectionDefaults('postgresql://u:p@h-pooler.x/db?connect_timeout=5&pgbouncer=false') as string);
