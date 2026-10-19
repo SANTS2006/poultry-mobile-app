@@ -25,10 +25,10 @@ export class ReferenceService {
       if (Number.isNaN(sinceDate.getTime())) throw new BadRequestException('since must be an ISO timestamp.');
     }
     const cursor = new Date(); // taken BEFORE reading so nothing changed during the read is missed next time
-    const farmId = await this.farms.resolve();
+    const [farmId, businessDate] = await Promise.all([this.farms.resolve(), this.settings.today()]);
     const out: Record<string, unknown> = {
       serverTime: cursor.toISOString(), cursor: cursor.toISOString(), incremental: !!sinceDate, farmId,
-      businessDate: await this.settings.today(),
+      businessDate,
       settings: {
         currency: await this.settings.get('business.currency'), timezone: await this.settings.get('business.timezone'),
         maxEggsPerRecord: await this.settings.get('production.maxEggsPerRecord'), productionBackdateDays: await this.settings.get('production.backdateDays'),

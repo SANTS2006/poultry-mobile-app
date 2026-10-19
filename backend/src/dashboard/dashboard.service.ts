@@ -35,12 +35,10 @@ export class DashboardService {
 
   async build(user: AuthUser, farmIdIn?: string) {
     const has = (p: string) => user.permissions.includes(p);
-    const farmId = await this.farms.resolve(farmIdIn);
-    const today = await this.settings.today();
-    const tz = await this.settings.get<string>('business.timezone');
+    const [farmId, today, tz, currency] = await Promise.all([this.farms.resolve(farmIdIn), this.settings.today(), this.settings.get<string>('business.timezone'), this.settings.get<string>('business.currency')]);
     const start = addDays(today, -13); // 14-day window incl. today
     const monthStart = `${today.slice(0, 7)}-01`;
-    const out: Record<string, unknown> = { businessDate: today, farmId, generatedAt: new Date().toISOString(), currency: await this.settings.get<string>('business.currency') };
+    const out: Record<string, unknown> = { businessDate: today, farmId, generatedAt: new Date().toISOString(), currency };
 
     // Sections are independent: ask for all of them at once instead of one after the other.
     const [production, inventory, sales, customers, expenses, cash, receivables, reviewProduction, reviewSales, reviewExpenses] = await Promise.all([
@@ -69,22 +67,21 @@ export class DashboardService {
   }
 
   private async production(farmId: string, today: string, start: string) {
-    const [coops, shifts, byCoop, byShift, trend] = await Promise.all([
+    const weekStart = addDays(today, -6);
+    const monthStart = `${today.slice(0, 7)}-01`;
+    // one wait for all of it: every figure is independent of the others
+    const [coops, shifts, byCoop, byShift, trend, week, month, recordsToday, recordsMonth, recorded] = await Promise.all([
       this.prisma.coop.findMany({ where: { farmId, active: true, deletedAt: null }, orderBy: { name: 'asc' } }),
       this.prisma.shift.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
       this.prisma.productionRecord.groupBy({ by: ['coopId'], where: { farmId, status: 'ACTIVE', productionDate: toDbDate(today) }, _sum: { totalEggs: true } }),
       this.prisma.productionRecord.groupBy({ by: ['shiftId'], where: { farmId, status: 'ACTIVE', productionDate: toDbDate(today) }, _sum: { totalEggs: true } }),
       this.prisma.productionRecord.groupBy({ by: ['productionDate'], where: { farmId, status: 'ACTIVE', productionDate: { gte: toDbDate(start), lte: toDbDate(today) } }, _sum: { totalEggs: true } }),
-    ]);
-    const weekStart = addDays(today, -6);
-    const monthStart = `${today.slice(0, 7)}-01`;
-    const [week, month, recordsToday, recordsMonth] = await Promise.all([
       this.prisma.productionRecord.aggregate({ where: { farmId, status: 'ACTIVE', productionDate: { gte: toDbDate(weekStart), lte: toDbDate(today) } }, _sum: { totalEggs: true } }),
       this.prisma.productionRecord.aggregate({ where: { farmId, status: 'ACTIVE', productionDate: { gte: toDbDate(monthStart), lte: toDbDate(today) } }, _sum: { totalEggs: true } }),
       this.prisma.productionRecord.count({ where: { farmId, status: 'ACTIVE', productionDate: toDbDate(today) } }),
       this.prisma.productionRecord.count({ where: { farmId, status: 'ACTIVE', productionDate: { gte: toDbDate(monthStart), lte: toDbDate(today) } } }),
+      this.prisma.productionRecord.findMany({ where: { farmId, status: 'ACTIVE', productionDate: toDbDate(today) }, select: { coopId: true, shiftId: true } }),
     ]);
-    const recorded = await this.prisma.productionRecord.findMany({ where: { farmId, status: 'ACTIVE', productionDate: toDbDate(today) }, select: { coopId: true, shiftId: true } });
     const done = new Set(recorded.map((r) => `${r.coopId}:${r.shiftId}`));
     const trendMap = new Map(trend.map((t) => [fromDbDate(t.productionDate), t._sum.totalEggs ?? 0]));
     const series = days(start, today).map((date) => ({ date, eggs: trendMap.get(date) ?? 0 }));
@@ -162,12 +159,14 @@ export class DashboardService {
 
   /** Cash basis: money actually received today minus expenses recorded today. This is a cash-flow indication, NOT profit. */
   private async cash(farmId: string, today: string, tz: string) {
-    const rows = await this.prisma.$queryRaw<{ s: Prisma.Decimal | null }[]>`
-      SELECT SUM(p.amount) AS s FROM "Payment" p JOIN "Sale" s ON s.id = p."saleId"
-      WHERE s."farmId" = ${farmId}::uuid AND p.status = 'ACTIVE' AND s.status = 'ACTIVE'
-        AND (p."paidAt" AT TIME ZONE ${tz})::date = ${today}::date`;
+    const [rows, exp] = await Promise.all([
+      this.prisma.$queryRaw<{ s: Prisma.Decimal | null }[]>`
+        SELECT SUM(p.amount) AS s FROM "Payment" p JOIN "Sale" s ON s.id = p."saleId"
+        WHERE s."farmId" = ${farmId}::uuid AND p.status = 'ACTIVE' AND s.status = 'ACTIVE'
+          AND (p."paidAt" AT TIME ZONE ${tz})::date = ${today}::date`,
+      this.prisma.expense.aggregate({ where: { farmId, status: 'ACTIVE', expenseDate: toDbDate(today) }, _sum: { total: true } }),
+    ]);
     const received = rows[0]?.s ?? D0;
-    const exp = await this.prisma.expense.aggregate({ where: { farmId, status: 'ACTIVE', expenseDate: toDbDate(today) }, _sum: { total: true } });
     const spent = exp._sum.total ?? D0;
     return { receivedToday: received.toString(), expensesToday: spent.toString(), netCashFlowToday: received.minus(spent).toString(), basis: 'cash received minus expenses recorded today (not profit)' };
   }

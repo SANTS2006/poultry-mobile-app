@@ -17,8 +17,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     super({
       datasourceUrl: withConnectionDefaults(process.env.DATABASE_URL), transactionOptions: { maxWait: 15_000, timeout: 60_000 },
       // Developer aid: PRISMA_QUERY_LOG=1 prints every SQL statement (to count round trips). Off by default: statements can contain personal data.
-      ...(process.env.PRISMA_QUERY_LOG === '1' ? { log: [{ emit: 'stdout' as const, level: 'query' as const }] } : {}),
+      ...(process.env.PRISMA_QUERY_LOG === '1' ? { log: [{ emit: 'event' as const, level: 'query' as const }] } : {}),
     });
+    if (process.env.PRISMA_QUERY_LOG === '1') {
+      const t0 = Date.now();
+      (this as unknown as { $on(e: 'query', cb: (q: { query: string; duration: number }) => void): void }).$on('query', (q) => process.stdout.write(`prisma:query +${Date.now() - t0}ms (${q.duration}ms) ${q.query.replace(/\s+/g, ' ').slice(0, 110)}\n`));
+    }
     // Every query goes through a wrapper that retries "could not reach the database" (P1001/P1002) a few times: those never ran the statement,
     // so a retry is safe (reads are also retried after "connection closed", which is how a sleeping Neon database shows up on an idle connection), and it rides out a Neon wake-up or a short network blip instead of failing the request.
     const retrying = this.$extends({

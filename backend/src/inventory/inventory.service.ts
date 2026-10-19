@@ -66,12 +66,11 @@ export class InventoryService {
 
   /** Current stock with a carton/crate/egg breakdown (conversion factors come from the unit table) and the low-stock flag. */
   async snapshot(farmId: string) {
-    const units = await this.pricing.unitsFor();
+    const [units, threshold] = await Promise.all([this.pricing.unitsFor(), this.settings.get<number>('inventory.lowStockThresholdEggs')]);
     const productId = units.get('EGG')!.productId;
     const eggs = await this.balance(farmId, productId);
     const carton = units.get('CARTON')?.eggsPerUnit ?? 360;
     const crate = units.get('CRATE')?.eggsPerUnit ?? 30;
-    const threshold = await this.settings.get<number>('inventory.lowStockThresholdEggs');
     return {
       farmId, productId, quantityEggs: eggs,
       breakdown: { cartons: Math.floor(eggs / carton), crates: Math.floor((eggs % carton) / crate), eggs: eggs % crate },

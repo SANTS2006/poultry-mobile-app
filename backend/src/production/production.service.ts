@@ -37,29 +37,24 @@ export class ProductionService {
   ) {}
 
   async create(user: AuthUser, dto: CreateProductionDto, meta: RequestMeta): Promise<{ record: ReturnType<typeof presentProduction>; created: boolean }> {
-    const today = await this.settings.today();
+    // Everything the request needs is asked for at once (settings, farm, an earlier copy of this record, units, shift): one wait instead of five.
+    const [today, backdate, max, farmId, prior, units, shift] = await Promise.all([
+      this.settings.today(), this.settings.get<number>('production.backdateDays'), this.settings.get<number>('production.maxEggsPerRecord'), this.farms.resolve(dto.farmId),
+      // Idempotent replay (offline re-send): same client id from the same user returns the original record.
+      dto.clientId ? this.prisma.productionRecord.findUnique({ where: { clientId: dto.clientId }, include }) : null,
+      this.pricing.unitsFor(), this.reference.shift(dto.shift),
+    ]);
     const date = dto.productionDate ?? today;
     if (!isValidDate(date)) throw new BadRequestException('productionDate is not a valid date.');
     if (date > today) throw new BadRequestException('Production cannot be recorded for a future date.');
-    const backdate = await this.settings.get<number>('production.backdateDays');
     if (daysBetween(date, today) > backdate && !user.permissions.includes('production.update')) {
       throw new ForbiddenException(`Entries older than ${backdate} days need a manager. Ask someone with correction rights.`);
     }
-    const farmId = await this.farms.resolve(dto.farmId);
-    const max = await this.settings.get<number>('production.maxEggsPerRecord');
-
-    // Idempotent replay (offline re-send): same client id from the same user returns the original record.
-    if (dto.clientId) {
-      const prior = await this.prisma.productionRecord.findUnique({ where: { clientId: dto.clientId }, include });
-      if (prior) {
-        if (prior.recordedById !== user.id) throw new ConflictException('This client id is already used.');
-        return { record: presentProduction(prior), created: false };
-      }
+    if (prior) {
+      if (prior.recordedById !== user.id) throw new ConflictException('This client id is already used.');
+      return { record: presentProduction(prior), created: false };
     }
-
-    // Reference data is read BEFORE the transaction (and from memory when possible): everything done inside a transaction costs a
-    // database round trip while holding locks, so the transaction contains only what must be atomic.
-    const [units, coop, shift] = await Promise.all([this.pricing.unitsFor(), this.reference.activeCoop(farmId, dto.coopId), this.reference.shift(dto.shift)]);
+    const coop = await this.reference.activeCoop(farmId, dto.coopId); // memory after the first call
     if (!coop) throw new BadRequestException('Unknown or inactive coop.');
     if (!shift || !shift.active) throw new BadRequestException('Unknown shift.');
     const { entries, total } = this.convert(dto.entries, units, max);
@@ -67,17 +62,16 @@ export class ProductionService {
     let result: Row;
     try {
       result = await this.prisma.$transaction(async (tx) => {
-        const dup = await tx.productionRecord.findFirst({ where: { coopId: coop.id, shiftId: shift.id, productionDate: toDbDate(date), status: 'ACTIVE' } });
-        if (dup) throw new ConflictException('Production for this coop, date and shift is already recorded. Use a correction instead.');
-
-        const record = await tx.productionRecord.create({
+        // No separate "already recorded?" read: a partial unique index (coop, shift, date, ACTIVE) refuses the duplicate, handled below.
+        // The response is built from what we already hold instead of reading the new row back.
+        const created = await tx.productionRecord.create({
           data: {
             farmId, coopId: coop.id, shiftId: shift.id, productionDate: toDbDate(date), totalEggs: total, notes: dto.notes,
             recordedById: user.id, clientId: dto.clientId,
             entries: { create: entries.map((e) => ({ productUnitId: e.unitId, quantity: e.quantity, baseEggs: e.baseEggs })) },
           },
-          include,
         });
+        const record: Row = { ...created, coop: { id: coop.id, name: coop.name }, shift: { code: shift.code }, entries: entries.map((e) => ({ id: '', recordId: created.id, productUnitId: e.unitId, quantity: e.quantity, baseEggs: e.baseEggs, productUnit: { code: e.unit } })) };
         if (total > 0) {
           await this.inventory.post(tx, {
             farmId, productId: units.get('EGG')!.productId, type: 'PRODUCTION', quantityEggs: total, occurredAt: eventTime(date, today),
@@ -198,7 +192,7 @@ export class ProductionService {
       seen.add(e.unit);
       const u = units.get(e.unit);
       if (!u) throw new BadRequestException(`Unit ${e.unit} is not configured.`);
-      return { unitId: u.id, quantity: e.quantity, baseEggs: e.quantity * u.eggsPerUnit };
+      return { unitId: u.id, unit: e.unit, quantity: e.quantity, baseEggs: e.quantity * u.eggsPerUnit };
     });
     const total = entries.reduce((a, e) => a + e.baseEggs, 0);
     if (total > max) throw new BadRequestException(`That is more than ${max} eggs for one shift. Please check the numbers.`);
