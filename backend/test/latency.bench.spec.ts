@@ -33,6 +33,7 @@ describe('latency benchmark', () => {
       process.env.DATABASE_URL = u.toString(); process.env.DIRECT_DATABASE_URL = u.toString();
     }
     ({ app, prisma } = await createApp());
+    if (process.env.BENCH_WAIT_MS) await new Promise((r) => setTimeout(r, Number(process.env.BENCH_WAIT_MS))); // lets the connection pool finish warming up, like a server that has been running for a while
   }, 120_000);
   afterAll(async () => {
     process.stdout.write(`\n──── API timings with the database ${process.env.BENCH_PROXY_PORT ? 'behind the delay proxy' : 'direct'} ────\n${out.join('\n')}\n\n`);

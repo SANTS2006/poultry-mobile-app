@@ -25,16 +25,18 @@ export class SessionService {
   async create(userId: string, meta: RequestMeta): Promise<{ familyId: string; refreshToken: string; newDevice: boolean }> {
     const familyId = randomUUID();
     const refreshToken = randomToken(48);
-    const newDevice = meta.deviceName
-      ? (await this.prisma.session.count({ where: { userId, deviceName: meta.deviceName, platform: meta.platform ?? null } })) === 0
-      : false;
-    await this.prisma.session.create({
-      data: {
-        userId, familyId, refreshTokenHash: this.tokens.hashRefreshToken(refreshToken),
-        deviceName: meta.deviceName, platform: meta.platform, ip: meta.ip, userAgent: meta.userAgent?.slice(0, 200),
-        expiresAt: new Date(Date.now() + SESSION_ABSOLUTE_MS),
-      },
-    });
+    // The "have we seen this device before?" lookup and the insert run together (the lookup ignores the session being created).
+    const [seenBefore] = await Promise.all([
+      meta.deviceName ? this.prisma.session.count({ where: { userId, deviceName: meta.deviceName, platform: meta.platform ?? null, familyId: { not: familyId } } }) : Promise.resolve(1),
+      this.prisma.session.create({
+        data: {
+          userId, familyId, refreshTokenHash: this.tokens.hashRefreshToken(refreshToken),
+          deviceName: meta.deviceName, platform: meta.platform, ip: meta.ip, userAgent: meta.userAgent?.slice(0, 200),
+          expiresAt: new Date(Date.now() + SESSION_ABSOLUTE_MS),
+        },
+      }),
+    ]);
+    const newDevice = !!meta.deviceName && seenBefore === 0;
     await this.enforceDeviceLimit(userId);
     return { familyId, refreshToken, newDevice };
   }

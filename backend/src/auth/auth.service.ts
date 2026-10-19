@@ -55,7 +55,7 @@ export class AuthService {
 
   async login(emailRaw: string, password: string, meta: RequestMeta): Promise<LoginResult> {
     const email = emailRaw.trim().toLowerCase();
-    const user = await this.prisma.user.findUnique({ where: { email }, include: { profile: true } });
+    const user = await this.prisma.user.findUnique({ where: { email } });
 
     if (user?.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
       // Still verify to keep timing uniform, but never let a locked account authenticate.
@@ -64,7 +64,11 @@ export class AuthService {
       throw new HttpException('Too many failed attempts. Please try again later.', HttpStatus.TOO_MANY_REQUESTS);
     }
 
-    const ok = await this.passwords.verify(user?.passwordHash, password);
+    // The password check (CPU) and the "does this role require MFA?" lookup (database) are independent: run them side by side.
+    const [ok, mfaRoles] = await Promise.all([
+      this.passwords.verify(user?.passwordHash, password),
+      user ? this.prisma.userRole.count({ where: { userId: user.id, role: { mfaRequired: true } } }) : Promise.resolve(0),
+    ]);
     if (!user || !ok) {
       await this.registerFailure(user?.id ?? null, meta);
       throw new UnauthorizedException(BAD_CREDENTIALS);
@@ -92,21 +96,21 @@ export class AuthService {
       await this.audit.record({ action: 'auth.login.password_change_required', userId: user.id, entityType: 'user', entityId: user.id, ip: meta.ip, requestId: meta.requestId });
       return { status: 'password_change_required', passwordToken: this.tokens.signPurpose('pwd-change', user.id, user.tokenVersion) };
     }
-    return this.afterPassword(user, meta);
+    return this.afterPassword(user, meta, mfaRoles);
   }
 
   /** What happens once the password step is done: second factor, forced MFA enrolment, or a session. */
-  private async afterPassword(user: { id: string; mfaEnabled: boolean; tokenVersion: number }, meta: RequestMeta): Promise<LoginResult> {
+  private async afterPassword(user: { id: string; mfaEnabled: boolean; tokenVersion: number }, meta: RequestMeta, mfaRoles?: number): Promise<LoginResult> {
     if (user.mfaEnabled) {
       return { status: 'mfa_required', mfaToken: this.tokens.signPurpose('mfa', user.id, user.tokenVersion) };
     }
-    const requiresMfa = (await this.prisma.userRole.count({ where: { userId: user.id, role: { mfaRequired: true } } })) > 0;
+    const requiresMfa = (mfaRoles ?? (await this.prisma.userRole.count({ where: { userId: user.id, role: { mfaRequired: true } } }))) > 0;
     if (requiresMfa) {
       // MFA enforcement: privileged roles get no session until an authenticator is enrolled.
       await this.audit.record({ action: 'auth.login.mfa_setup_required', userId: user.id, ip: meta.ip, requestId: meta.requestId });
       return { status: 'mfa_setup_required', setupToken: this.tokens.signPurpose('mfa-setup', user.id, user.tokenVersion) };
     }
-    return this.startSession(user.id, meta, 'password');
+    return this.startSession(user.id, meta, 'password', user.tokenVersion);
   }
 
   /** Second step of login: TOTP or recovery code against the short-lived mfa token. */
@@ -139,10 +143,14 @@ export class AuthService {
     return this.startSession(userId, meta, 'mfa_setup');
   }
 
-  private async startSession(userId: string, meta: RequestMeta, via: string): Promise<LoginResult> {
-    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    const { familyId, refreshToken, newDevice } = await this.sessions.create(userId, meta);
-    await this.prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } });
+  private async startSession(userId: string, meta: RequestMeta, via: string, knownTokenVersion?: number): Promise<LoginResult> {
+    // Independent database work runs side by side: every sequential query is a full round trip to the (possibly far away) database.
+    const [tokenVersion, { familyId, refreshToken, newDevice }, summary] = await Promise.all([
+      knownTokenVersion !== undefined ? Promise.resolve(knownTokenVersion) : this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { tokenVersion: true } }).then((u) => u.tokenVersion),
+      this.sessions.create(userId, meta),
+      this.summary(userId),
+      this.prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() }, select: { id: true } }),
+    ]).then(([tv, sess, sum]) => [tv, sess, sum] as const);
     await this.audit.record({ action: 'auth.login.success', userId, entityType: 'user', entityId: userId, ip: meta.ip, deviceInfo: meta.deviceName, requestId: meta.requestId, after: { via } });
     if (newDevice) {
       await this.audit.record({ action: 'auth.login.new_device', userId, entityType: 'user', entityId: userId, ip: meta.ip, deviceInfo: `${meta.deviceName ?? ''} ${meta.platform ?? ''}`.trim(), requestId: meta.requestId });
@@ -150,8 +158,8 @@ export class AuthService {
     }
     return {
       status: 'authenticated',
-      tokens: this.buildTokens(userId, familyId, user.tokenVersion, refreshToken),
-      user: await this.summary(userId),
+      tokens: this.buildTokens(userId, familyId, tokenVersion, refreshToken),
+      user: summary,
     };
   }
 

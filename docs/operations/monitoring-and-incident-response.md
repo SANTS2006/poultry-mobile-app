@@ -39,9 +39,18 @@ What only deployment can fix: **put the API in the same region as the database**
 
 ## Database connection drops (P1001 / P1017 / P2024)
 Neon pauses an idle compute after ~5 minutes; the next connection waits for it to wake, and connections that were open are closed. Prisma's defaults (5 s connect timeout, a pool that keeps handing out dead connections) turned that into "Can't reach database server" errors that kept repeating. What the API now does by itself:
-- adds `connect_timeout=30`, `pool_timeout=30` (and `pgbouncer=true` for the `-pooler` host) to `DATABASE_URL` unless you set them;
+- adds `connect_timeout=10`, `pool_timeout=30` to `DATABASE_URL` unless you set them (it does **not** add `pgbouncer=true`: that made Prisma several times slower over a far-away link);
 - keeps the database awake with a tiny query every 4 minutes whenever the host is `*.neon.tech` (override with `DB_KEEPALIVE_SECONDS`, `0` = off);
 - retries a query that could not reach the database after 0.5, 1, 2 and 4 s; reads are also retried after "connection closed" (P1017), writes only when the statement provably never ran (P1001/P1002);
 - **resets the connection pool** when that happens (a Prisma pool otherwise stays broken after an outage until the client reconnects) — at most once every 1.5 s;
 - answers 503 "cannot reach its database, try again" to the phone instead of a 500, and logs one short warning line instead of a stack trace.
 Verified: a test stopped a real PostgreSQL for ~1 s while four reads were in flight; all four succeeded about 0.6 s after it came back and a write worked straight after. Not verified: Neon's own wake-up timing, or a network that blocks port 5432 for minutes (then requests fail with 503 after ~8 s, by design).
+
+
+## Slow sign-in over a far-away database (round trips)
+Every sequential database query costs one network round trip, and Prisma needs about two for a statement it has not run on that connection before. From a laptop to Neon in Ohio a round trip is 0.2–1.5 s, so the number of *sequential* queries decides how long a screen takes. Measured with a simulated 0.5 s round trip (`scripts/latency-proxy.js`), the sign-in went from **16.3 s to 5.1 s**, and `GET /auth/me` from 10 s to 1 s, by:
+- loading related records (user → roles → permissions) with one joined query (`relationLoadStrategy: 'join'`, Prisma preview feature `relationJoins`; turn off with `PRISMA_RELATION_JOINS=0`);
+- writing each audit entry with one database call (the `audit_append` function from migration `20261019000100`, same hash chain; the API falls back to the old five-call path if the migration has not been applied);
+- running independent work side by side during sign-in (password check ∥ role lookup; session insert ∥ last-login update ∥ profile load);
+- pre-opening and keeping 4 connections warm (`DB_WARM_CONNECTIONS`, default 4 on Neon/production).
+`PRISMA_QUERY_LOG=1` prints every SQL statement so you can count round trips for any endpoint (development only: statements can contain personal data). The dashboard (~7 s) and offline sync push (14–20 s) are still dominated by round trips at that latency: the real fix for those is hosting the API in the same region as the database.

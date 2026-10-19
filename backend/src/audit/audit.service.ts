@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface AuditEntry {
@@ -50,16 +50,47 @@ export function stableStringify(value: unknown): string {
  * makes silent edits or deletions detectable even for someone with database access (verified by `verifyChain`).
  */
 @Injectable()
-export class AuditService {
+export class AuditService implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Checks once at start-up whether the one-round-trip function exists (so a transaction is never aborted by finding out the hard way). */
+  async onModuleInit(): Promise<void> {
+    try { this.legacy = !(await this.prisma.$queryRaw<{ ok: boolean }[]>`SELECT to_regproc('audit_append') IS NOT NULL AS ok`)[0]?.ok; } catch { /* database not reachable yet: keep the default and retry on first use */ }
+  }
 
   /** Pass `tx` to write the audit row atomically with the business change (rolls back together). */
   async record(entry: AuditEntry, tx?: Tx): Promise<void> {
     if (tx) return this.write(tx, entry);
+    if (!this.legacy) return this.write(this.prisma, entry); // the function is atomic by itself: no transaction (and no extra round trips) needed
     await this.prisma.$transaction((t) => this.write(t, entry));
   }
 
-  private async write(tx: Tx, e: AuditEntry): Promise<void> {
+  /** Becomes true if the database does not have `audit_append` yet (migration not applied): the older, slower path is used instead. */
+  private legacy = false;
+
+  /** Appends one entry. One database call (the `audit_append` function); `tx` only decides whether it joins the caller's transaction. */
+  private async write(tx: Tx | PrismaService, e: AuditEntry): Promise<void> {
+    if (!this.legacy) {
+      try { return await this.writeFast(tx, e); } catch (err) {
+        const state = (err as { meta?: { code?: string }; message?: string });
+        if (/audit_append/.test(state.message ?? '') && /does not exist/.test(state.message ?? '')) this.legacy = true; // migration not run yet
+        else throw err;
+      }
+    }
+    await this.writeLegacy(tx as Tx, e);
+  }
+
+  private async writeFast(tx: Tx | PrismaService, e: AuditEntry): Promise<void> {
+    const createdAt = new Date();
+    const before = (scrub(e.before) ?? null) as Prisma.InputJsonValue | null;
+    const after = (scrub(e.after) ?? null) as Prisma.InputJsonValue | null;
+    const d = { userId: e.userId ?? null, userName: e.userName ?? null, action: e.action, entityType: e.entityType ?? null, entityId: e.entityId ?? null, before, after, reason: e.reason ?? null, ip: e.ip ?? null, deviceInfo: e.deviceInfo?.slice(0, 200) ?? null, requestId: e.requestId ?? null };
+    // everything after the previous hash in the canonical array; the function puts the previous hash in front (see the migration)
+    const tail = stableStringify([d.userId, d.userName, d.action, d.entityType, d.entityId, d.before ?? null, d.after ?? null, d.reason, d.ip, d.deviceInfo, d.requestId, createdAt.toISOString()]).slice(1);
+    await tx.$executeRaw`SELECT audit_append(${randomUUID()}::uuid, ${d.userId}::uuid, ${d.userName}, ${d.action}, ${d.entityType}, ${d.entityId}, ${JSON.stringify(before ?? null)}::jsonb, ${JSON.stringify(after ?? null)}::jsonb, ${d.reason}, ${d.ip}, ${d.deviceInfo}, ${d.requestId}, ${createdAt}::timestamptz, ${tail})`;
+  }
+
+  private async writeLegacy(tx: Tx, e: AuditEntry): Promise<void> {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(748201)`; // serialise chain appends
     const last = await tx.auditLog.findFirst({ orderBy: { seq: 'desc' }, select: { hash: true } });
     const createdAt = new Date();

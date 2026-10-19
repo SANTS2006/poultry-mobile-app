@@ -4,7 +4,8 @@ import { Prisma } from '@prisma/client';
  * Connection settings that make a serverless database (Neon) behave on a real network:
  *  - connect_timeout 10 s (Prisma's default is 5 s, shorter than a Neon wake-up from sleep, which is what shows up as "P1001 can't reach database server");
  *  - pool_timeout 30 s (wait for a free connection instead of failing after 10 s while a slow wake-up holds them all);
- *  - pgbouncer=true for Neon's pooled host ("-pooler"), which Prisma needs there.
+ * (pgbouncer=true is deliberately NOT added: it switches Prisma to un-cached statements, which measured several times slower over a far-away link, and
+ * Neon's pooler works without it. Add it yourself only if you see "prepared statement ... does not exist" errors.)
  * Anything you set yourself in DATABASE_URL wins.
  */
 export function withConnectionDefaults(url: string | undefined): string | undefined {
@@ -13,7 +14,6 @@ export function withConnectionDefaults(url: string | undefined): string | undefi
     const u = new URL(url);
     if (!u.searchParams.has('connect_timeout')) u.searchParams.set('connect_timeout', '10');
     if (!u.searchParams.has('pool_timeout')) u.searchParams.set('pool_timeout', '30');
-    if (/-pooler\./.test(u.hostname) && !u.searchParams.has('pgbouncer')) u.searchParams.set('pgbouncer', 'true');
     return u.toString();
   } catch { return url; }
 }

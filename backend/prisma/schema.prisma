@@ -5,6 +5,7 @@
 // migration `*_constraints` because Prisma cannot express them.
 
 generator client {
+  previewFeatures = ["relationJoins"]
   provider = "prisma-client-js"
 }
 
