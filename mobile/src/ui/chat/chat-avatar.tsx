@@ -16,7 +16,7 @@ export function ChatAvatar({ name, size = 48, userId, groupId, hasAvatar, versio
   return (
     <View>
       <Avatar name={name} size={size} uri={uri} headers={headers} />
-      {isOnline && userId ? <View accessibilityLabel="Online" style={{ position: 'absolute', right: 0, bottom: 0, width: size * 0.28, height: size * 0.28, borderRadius: size, backgroundColor: c.ok, borderWidth: 2, borderColor: c.bg }} /> : null}
+      {isOnline && userId ? <View accessibilityLabel="Online" style={{ position: 'absolute', right: 0, bottom: 0, width: Math.max(12, size * 0.3), height: Math.max(12, size * 0.3), borderRadius: size, backgroundColor: c.ok, borderWidth: 2, borderColor: c.bg }} /> : null}
     </View>
   );
 }

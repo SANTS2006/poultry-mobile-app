@@ -97,6 +97,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             onReady: () => {
               void queryClient.invalidateQueries({ queryKey: ['chat'] }); // anything that happened while the socket was down
               chatSender.retryAll(); void syncCurrentCall(api);
+              // messages that arrived while this phone was offline are now "delivered": tell their senders (the second tick)
+              void api.chat.conversations({ page: 1, limit: 50 }).then((pg) => { for (const c of pg.items.filter((x) => x.unread > 0 && x.lastSeq > 0).slice(0, 25)) realtime?.send('chat.delivered', { conversationId: c.id, upToSeq: c.lastSeq }); }).catch(() => undefined);
             },
             onNotification: () => {
               void api.notifications.list({ page: 1, limit: 1 }).then((p) => { const n = p.items[0]; if (n && !n.readAt) useLiveNotice.getState().announce({ id: n.id, title: n.title }); }).catch(() => undefined);
@@ -178,10 +180,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return <AppContext.Provider value={value}><QueryClientProvider client={value.queryClient}>{children}</QueryClientProvider></AppContext.Provider>;
 }
 
-/** PUTs a local file to a pre-signed storage URL (the file never passes through our API). Streamed natively: no copy of the file is held in JavaScript. */
+/**
+ * PUTs a local file to a pre-signed storage URL (the file never passes through our API). The native uploader streams it without holding the
+ * file in JavaScript; if that is unavailable or fails before the server answers, the file is read and sent the plain way instead.
+ */
 async function putFile(uri: string, url: string, headers: Record<string, string>): Promise<void> {
-  const res = await uploadAsync(url, uri, { httpMethod: 'PUT', headers, uploadType: FileSystemUploadType.BINARY_CONTENT });
-  if (res.status < 200 || res.status >= 300) throw Object.assign(new Error('upload failed'), { status: res.status });
+  let status: number | null = null;
+  try {
+    status = (await uploadAsync(url, uri, { httpMethod: 'PUT', headers, uploadType: FileSystemUploadType.BINARY_CONTENT })).status;
+  } catch { status = null; }
+  if (status === null) {
+    const blob = await (await fetch(uri)).blob();
+    status = (await fetch(url, { method: 'PUT', headers, body: blob })).status;
+  }
+  if (status < 200 || status >= 300) throw Object.assign(new Error(`The file could not be stored (storage answered ${status}).`), { status, body: { message: `The file could not be stored (storage answered ${status}). Check the chat file storage settings.` } });
 }
 
 const PUSH_ASKED = 'pref.pushAsked';

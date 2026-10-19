@@ -38,7 +38,8 @@ export default function Chat() {
   const insets = useSafeAreaInsets();
   const me = useAppStore((s) => s.user);
   const online = useAppStore((s) => (s.sync ? s.sync.online : true));
-  const canCall = useCan('chat.use') && callsSupported();
+  const canChat = useCan('chat.use');
+  const callsReady = callsSupported();
   const detail = useQuery({ queryKey: chatKeys.conversation(id), queryFn: () => api.chat.conversation(id) });
   const config = useQuery({ queryKey: ['chat', 'config'], queryFn: () => api.chat.config(), staleTime: 3600_000 });
   const msgs = useMessages(id);
@@ -53,12 +54,16 @@ export default function Chat() {
   // Keyboard open: the box sits right above the keys (like WhatsApp). iOS lets KeyboardAvoidingView do it; on Android the window does not
   // shrink for the keyboard, so we measure how much of the screen the keyboard covers and lift the whole chat by that amount.
   const [keyboardUp, setKeyboardUp] = useState(false);
+  const [focused, setFocused] = useState(false);
   const [lift, setLift] = useState(0);
   const frame = useRef<View>(null);
   useEffect(() => {
     const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
       setKeyboardUp(true);
-      if (Platform.OS !== 'ios') frame.current?.measureInWindow((_x, y, _w, h) => setLift(Math.max(0, Math.round(y + h - e.endCoordinates.screenY))));
+      if (Platform.OS === 'ios') return;
+      // measured more than once: some phones resize the window a moment after the keyboard appears (then there is nothing left to lift)
+      const measure = () => frame.current?.measureInWindow((_x, y, _w, h) => setLift(Math.max(0, Math.round(y + h - e.endCoordinates.screenY))));
+      measure(); setTimeout(measure, 150); setTimeout(measure, 400);
     });
     const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => { setKeyboardUp(false); setLift(0); });
     return () => { show.remove(); hide.remove(); };
@@ -167,6 +172,7 @@ export default function Chat() {
 
   function call(kind: 'AUDIO' | 'VIDEO') {
     if (!conv) return;
+    if (!callsReady) return void dialog.notify({ title: 'Calls need the installed app', message: 'Voice and video calls do not work inside Expo Go. Install the Makarifor app build on your phone (see the build directions) to make calls.', tone: 'info' });
     void getCallManager(services.api).start(conv.id, conv.peerId, conv.title ?? 'Call', kind);
   }
 
@@ -192,7 +198,7 @@ export default function Chat() {
       ),
       headerRight: () => (
         <View style={{ flexDirection: 'row' }}>
-          {canCall && !group ? (
+          {canChat && !group ? (
             <>
               <Pressable accessibilityRole="button" accessibilityLabel="Voice call" hitSlop={6} onPress={() => call('AUDIO')} style={{ width: 40, height: TOUCH, alignItems: 'center', justifyContent: 'center' }}><Icon name="call-outline" size="md" color={c.text} /></Pressable>
               <Pressable accessibilityRole="button" accessibilityLabel="Video call" hitSlop={6} onPress={() => call('VIDEO')} style={{ width: 40, height: TOUCH, alignItems: 'center', justifyContent: 'center' }}><Icon name="videocam-outline" size="md" color={c.text} /></Pressable>
@@ -201,7 +207,7 @@ export default function Chat() {
           <Pressable accessibilityRole="button" accessibilityLabel="Conversation details" hitSlop={6} onPress={() => router.push({ pathname: '/messages/info/[id]', params: { id } } as never)} style={{ width: 40, height: TOUCH, alignItems: 'center', justifyContent: 'center' }}><Icon name="information-circle-outline" size="md" color={c.text} /></Pressable>
         </View>
       ),
-    }), [title, subtitle, typing.length, c, router, id, group, peerId, conv?.hasAvatar, conv?.avatarVersion, conv?.peerOnline, canCall]); // eslint-disable-line react-hooks/exhaustive-deps
+    }), [title, subtitle, typing.length, c, router, id, group, peerId, conv?.hasAvatar, conv?.avatarVersion, conv?.peerOnline, canChat, conv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <View ref={frame} collapsable={false} style={{ flex: 1, backgroundColor: c.bg, paddingBottom: lift }}>
@@ -244,8 +250,8 @@ export default function Chat() {
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, padding: space.sm, paddingBottom: space.sm + (keyboardUp ? 0 : insets.bottom), backgroundColor: c.bg, borderTopWidth: 1, borderColor: c.border }}>
           {!editing ? <Pressable accessibilityRole="button" accessibilityLabel="Attach a file or photo" onPress={() => void attach()} style={{ width: TOUCH, height: TOUCH, alignItems: 'center', justifyContent: 'center' }}><Icon name="add-circle-outline" size="lg" color={c.primary} /></Pressable> : null}
           <TextInput
-            accessibilityLabel="Message" value={text} onChangeText={onChange} placeholder="Message" placeholderTextColor={c.muted} multiline maxLength={4000} cursorColor={c.primary} selectionColor={c.primary}
-            style={{ flex: 1, minHeight: TOUCH - 4, maxHeight: 120, color: c.text, backgroundColor: c.input, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, paddingHorizontal: space.md, paddingTop: Platform.OS === 'ios' ? 12 : 8, paddingBottom: Platform.OS === 'ios' ? 12 : 8, fontSize: 16, textAlignVertical: 'center' }}
+            accessibilityLabel="Message" onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} value={text} onChangeText={onChange} placeholder="Message" placeholderTextColor={c.muted} multiline maxLength={4000} cursorColor={c.primary} selectionColor={c.primary}
+            style={{ flex: 1, minHeight: TOUCH, maxHeight: 140, color: c.text, backgroundColor: c.input, borderRadius: radius.lg, borderWidth: focused ? 2 : 1, borderColor: focused ? c.primary : c.border, paddingHorizontal: space.md, paddingTop: Platform.OS === 'ios' ? 12 : 8, paddingBottom: Platform.OS === 'ios' ? 12 : 8, fontSize: 16, textAlignVertical: 'center' }}
           />
           <Pressable accessibilityRole="button" accessibilityLabel={editing ? 'Save edit' : 'Send message'} accessibilityState={{ disabled: !text.trim() }} disabled={!text.trim()} onPress={() => void send()}
             style={{ width: TOUCH, height: TOUCH, borderRadius: radius.pill, backgroundColor: text.trim() ? c.primary : c.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
