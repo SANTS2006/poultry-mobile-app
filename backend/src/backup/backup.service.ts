@@ -6,7 +6,9 @@ import { mkdtemp, rm, stat, statfs } from 'fs/promises';
 import { PinoLogger } from 'nestjs-pino';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
+import { createGzip } from 'zlib';
 import { AuditService } from '../audit/audit.service';
 import type { Env } from '../config/env';
 import { SettingsService } from '../domain/settings.service';
@@ -16,13 +18,17 @@ import { decryptFile, EncryptStream, HashTap, parseKey, sha256File } from './bac
 import { INVARIANTS } from './backup.invariants';
 import { selectExpired } from './backup.retention';
 import { R2Storage, type BackupStorage } from './backup.storage';
-import { databaseOf, describeTarget, pgEnv, runTool, startTool, toolAvailable, withDatabase } from './pg-tools';
+import { DUMP_FORMAT, dumpFrames, inspectDump, restoreDump } from './logical-dump';
+import { databaseOf, describeTarget, withDatabase } from './pg-tools';
 
 export const MAX_ATTEMPTS = 3;
 const RETRY_DELAYS_MIN = [5, 15];
 const STALE_RUNNING_MS = 3 * 3_600_000;
-const FORMAT = 'pg_dump-custom+aes-256-gcm';
+const FORMAT = `${DUMP_FORMAT}+gzip+aes-256-gcm`;
 export const DUMP_TIMEOUT_MS = 2 * 3_600_000;
+
+/** An error message safe to store and show: connection strings and passwords removed. */
+const scrubError = (e: unknown): string => (e instanceof Error ? e.message : 'unknown error').replace(/postgres(ql)?:\/\/[^\s'"]+/gi, 'postgresql://[redacted]').replace(/password[=:]\s*\S+/gi, 'password=[redacted]').slice(0, 800);
 
 export interface Actor { id: string | null; name: string; ip?: string; requestId?: string }
 export interface VerifyResult { ok: boolean; level: 'archive' | 'restore'; checks: { name: string; ok: boolean }[]; message?: string; at: string }
@@ -48,7 +54,6 @@ export class BackupService {
   }
   get hasKey(): boolean { return Buffer.from(this.cfg('BACKUP_ENCRYPTION_KEY'), 'base64').length === 32; }
   get recoveryConfigured(): boolean { return !!this.cfg('RECOVERY_ADMIN_DATABASE_URL'); }
-  get binDir(): string { return this.cfg('BACKUP_PG_BIN_DIR'); }
   get key(): Buffer { return parseKey(this.cfg('BACKUP_ENCRYPTION_KEY')); }
 
   /** Cloudflare R2 needs the account id (or an explicit endpoint), a bucket and an access key pair. */
@@ -128,16 +133,15 @@ export class BackupService {
       const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
       const storageKey = `${stamp.slice(0, 4)}/${stamp.slice(4, 6)}/makarifor-${stamp}-${job.id}.dump.enc`;
 
-      const { child, done } = startTool('pg_dump', ['--format=custom', '--compress=6', '--no-owner', '--no-privileges'], pgEnv(prodUrl), this.binDir);
+      // The database is read in one consistent snapshot and streamed straight through gzip and encryption into a temporary file.
       const tap = new HashTap();
-      const timer = setTimeout(() => child.kill('SIGKILL'), DUMP_TIMEOUT_MS);
-      let writeErr: unknown;
-      const piped = pipeline(child.stdout!, new EncryptStream(this.key, job.id), tap, createWriteStream(file, { mode: 0o600 })).catch((e) => { writeErr = e; child.kill('SIGKILL'); });
-      const [res] = await Promise.all([done, piped]);
-      clearTimeout(timer);
-      if (writeErr) throw new Error('Could not write the backup file');
-      // The exit status — not the existence of a file — decides success.
-      if (res.code !== 0) throw new Error(`pg_dump failed (exit ${res.code}): ${res.stderr.trim() || 'no output'}`);
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), DUMP_TIMEOUT_MS);
+      try {
+        await pipeline(Readable.from(dumpFrames(prodUrl)), createGzip({ level: 6 }), new EncryptStream(this.key, job.id), tap, createWriteStream(file, { mode: 0o600 }), { signal: abort.signal });
+      } catch (e) {
+        throw new Error(`The database could not be read for the backup: ${scrubError(e)}`, { cause: e });
+      } finally { clearTimeout(timer); }
       const sha = tap.digest();
       const size = (await stat(file)).size;
 
@@ -175,7 +179,7 @@ export class BackupService {
 
   // ── verification ────────────────────────────────────────────────────────────────────────────
   /**
-   * archive: fetch the stored copy, compare the checksum, authenticate/decrypt it and make sure pg_restore can read its table of contents.
+   * archive: fetch the stored copy, compare the checksum, authenticate/decrypt it and read the whole dump and check that it is complete.
    * deep:    additionally restore it into a scratch database on the recovery server and run the business-invariant checks.
    */
   async verify(jobId: string, o: { deep: boolean }, actor?: Actor): Promise<VerifyResult> {
@@ -195,9 +199,9 @@ export class BackupService {
       if (sha !== job.sha256) throw new Error('Checksum mismatch: the stored backup is corrupt or was altered.');
       await decryptFile(enc, plain, this.key, job.id);
       checks.push({ name: 'Decrypted and authenticated', ok: true });
-      const list = await runTool('pg_restore', ['--list', plain], {}, this.binDir, 300_000);
-      checks.push({ name: 'Archive is readable by pg_restore', ok: list.code === 0 });
-      if (list.code !== 0) throw new Error(`pg_restore cannot read the archive: ${list.stderr.trim()}`);
+      if (!job.format?.startsWith(DUMP_FORMAT)) throw new Error('This backup was made by an older version that needed pg_dump. It cannot be read by this version; take a new backup.');
+      const info = await inspectDump(plain);
+      checks.push({ name: `Archive is complete: ${info.tables} tables, ${info.rows} rows, every table's row count matches`, ok: true });
       if (o.deep) {
         const scratch = await this.restoreToNewDatabase(plain, `verify_${Date.now()}`);
         try { checks.push(...scratch.checks); checks.push({ name: 'Restored into an isolated database', ok: true }); }
@@ -234,8 +238,8 @@ export class BackupService {
     const admin = this.admin();
     try { await admin.$executeRawUnsafe(`CREATE DATABASE "${name}"`); } finally { await admin.$disconnect(); }
     const url = withDatabase(adminUrl, name);
-    const r = await runTool('pg_restore', ['--no-owner', '--no-privileges', '--exit-on-error', `--dbname=${name}`, plainDump], pgEnv(adminUrl), this.binDir, DUMP_TIMEOUT_MS);
-    if (r.code !== 0) { await this.dropDatabase(name); throw new Error(`pg_restore failed (exit ${r.code}): ${r.stderr.trim()}`); }
+    try { await restoreDump(plainDump, url); }
+    catch (e) { await this.dropDatabase(name).catch(() => undefined); throw new Error(`The restore failed: ${scrubError(e)}`, { cause: e }); }
     const target = new PrismaClient({ datasourceUrl: url });
     const checks: { name: string; ok: boolean }[] = [];
     try {
@@ -300,7 +304,6 @@ export class BackupService {
     const health: 'disabled' | 'never' | 'stale' | 'failing' | 'ok' = !enabled ? 'disabled' : !latestOk ? 'never' : ageHours! > stale ? 'stale' : latestFail && latestFail.createdAt > latestOk.createdAt ? 'failing' : 'ok';
     const warnings: string[] = [];
     if (!this.hasKey) warnings.push('BACKUP_ENCRYPTION_KEY is not set: backups cannot run.');
-    if (!(await toolAvailable('pg_dump', this.binDir))) warnings.push('pg_dump is not installed on the API server (or not on the PATH): backups will fail. Install the PostgreSQL client tools or set BACKUP_PG_BIN_DIR.');
     if (!store) warnings.push('Cloudflare R2 is not configured: backups cannot run. Set BACKUP_R2_ACCOUNT_ID, BACKUP_R2_BUCKET, BACKUP_R2_ACCESS_KEY_ID and BACKUP_R2_SECRET_ACCESS_KEY.');
     else if (!storage.ok) warnings.push(storage.detail ?? 'Cloudflare R2 is not reachable.');
     if (!this.recoveryConfigured) warnings.push('RECOVERY_ADMIN_DATABASE_URL is not set: restore tests and recovery are unavailable.');

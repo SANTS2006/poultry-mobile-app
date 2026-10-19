@@ -58,7 +58,6 @@ const schema = z
     CF_TURN_API_TOKEN: z.string().default(''),
     /** Delete chat messages (and their files) older than this many days. 0 = keep until a person deletes them. */
     CHAT_RETENTION_DAYS: z.coerce.number().int().min(0).max(3650).default(0),
-    BACKUP_PG_BIN_DIR: z.string().default(''),
     BACKUP_ALERT_EMAILS: z.string().default('').transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
     BACKUP_STALE_HOURS: z.coerce.number().int().min(2).max(240).default(26),
     RECOVERY_ADMIN_DATABASE_URL: z.string().default(''),

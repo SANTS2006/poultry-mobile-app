@@ -33,7 +33,7 @@ describe('Security regression suite (e2e, real PostgreSQL)', () => {
       const routes = (router?.stack ?? []).filter((l) => l.route).flatMap((l) => Object.keys(l.route!.methods).filter((m) => ['get', 'post', 'put', 'patch', 'delete'].includes(m)).map((m) => ({ m: m.toUpperCase(), p: l.route!.path })))
         .filter((r) => r.p.startsWith('/v1/') && !r.p.includes('*'));
       expect(routes.length).toBeGreaterThan(80); // proves the walk actually found the API
-      const PUBLIC = new Set(['/health/live', '/health/ready', '/v1/auth/login', '/v1/auth/mfa/verify', '/v1/auth/refresh', '/v1/auth/verify-email',
+      const PUBLIC = new Set(['/health/live', '/health/ready', '/v1/auth/login', '/v1/auth/google', '/v1/auth/mfa/verify', '/v1/auth/refresh', '/v1/auth/verify-email',
         '/v1/auth/resend-verification', '/v1/auth/first-password', '/v1/auth/forgot-password', '/v1/auth/reset-password', '/v1/auth/mfa/enroll', '/v1/auth/mfa/confirm', '/v1/_probe/open']);
       const uuid = '11111111-1111-4111-8111-111111111111';
       const leaks: string[] = [];

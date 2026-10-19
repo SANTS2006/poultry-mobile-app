@@ -44,7 +44,7 @@ Then run the API on your host with the variables above:
 cd backend && npm ci && npm run build        # build (prisma generate + nest build)
 npm run start                                # node dist/main.js  (needs Node 22)
 ```
-Health checks: `GET /health/live`, `GET /health/ready`. **Install the PostgreSQL client tools (version ≥ your database's, e.g. `postgresql-client-17`) on the same host**, because the in-app backups run `pg_dump`; if your host does not let you install packages (many managed Node hosts do not), use a small VM, or run `npm run backup:cli -- tick` from a machine that has them.
+Health checks: `GET /health/live`, `GET /health/ready`. Backups need no PostgreSQL client tools: the API dumps and restores the database itself (the `prisma/migrations` folder must be deployed with it).
 
 Excel history is imported **once**, after review: `docs/deployment/excel-migration.md` (dry run first; the importer writes a reconciliation report; the workbook is never modified).
 

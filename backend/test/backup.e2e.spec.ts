@@ -1,3 +1,7 @@
+import { mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import * as dump from '../src/backup/logical-dump';
 import { INestApplication } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { randomBytes } from 'crypto';
@@ -11,7 +15,11 @@ import { MailService } from '../src/mail/mail.service';
 import { FakeR2 } from './fake-storage';
 import { api, bearer, createApp, makeUser, PASSWORD, seed, signIn, totpAt } from './helpers';
 
-describe('Backups and recovery (e2e: real PostgreSQL, real pg_dump / pg_restore, real encryption)', () => {
+const breakDump = () => jest.spyOn(dump, 'dumpFrames').mockImplementation(
+  // eslint-disable-next-line require-yield
+  async function* () { throw new Error('connection refused'); });
+
+describe('Backups and recovery (e2e: real PostgreSQL, built-in dump and restore, real encryption)', () => {
   let app: INestApplication; let prisma: PrismaClient; let backups: BackupService; let scheduler: BackupScheduler; let recovery: RecoveryService; let mail: MailService;
   let admin: string; let owner: string; let secret: string;
   const dropAfter: string[] = [];
@@ -75,12 +83,12 @@ describe('Backups and recovery (e2e: real PostgreSQL, real pg_dump / pg_restore,
       const job = await waitFor(async () => { const j = await prisma.backupJob.findUnique({ where: { id: first } }); return j && ['SUCCESSFUL', 'FAILED'].includes(j.status) && j.verification !== 'NOT_VERIFIED' ? j : null; });
       expect(job.error).toBeNull();
       expect(job.status).toBe('SUCCESSFUL');
-      expect(job).toMatchObject({ kind: 'MANUAL', encrypted: true, verification: 'VERIFIED', destination: 'Cloudflare R2 · test-bucket', format: 'pg_dump-custom+aes-256-gcm' });
+      expect(job).toMatchObject({ kind: 'MANUAL', encrypted: true, verification: 'VERIFIED', destination: 'Cloudflare R2 · test-bucket', format: 'mkdump-1+gzip+aes-256-gcm' });
       expect(Number(job.sizeBytes)).toBeGreaterThan(1000);
       expect(job.sha256).toMatch(/^[0-9a-f]{64}$/);
       const file = blob(job.storageKey);
       expect(file.subarray(0, 5).toString()).toBe('MKBK1');
-      expect(file.includes(Buffer.from('PGDMP'))).toBe(false); // plain pg_dump header is not visible
+      expect(file.includes(Buffer.from('MKDUMP1'))).toBe(false); // the dump header is not visible
       expect(file.includes(Buffer.from('admin@'))).toBe(false);
       const actions = await waitFor(async () => { const a = (await prisma.auditLog.findMany({ where: { entityId: first }, select: { action: true } })).map((x) => x.action); return a.includes('backup.verified') ? a : null; }); // the audit row is written just after the status update
       expect(actions).toEqual(expect.arrayContaining(['backup.manual_requested', 'backup.succeeded', 'backup.verified']));
@@ -164,12 +172,12 @@ describe('Backups and recovery (e2e: real PostgreSQL, real pg_dump / pg_restore,
   describe('failure handling', () => {
     it('a failed backup is recorded, stores nothing, does not touch earlier backups, alerts, and a scheduled one is retried with backoff', async () => {
       const before = await prisma.backupJob.findMany({ where: { status: 'SUCCESSFUL' }, select: { id: true, storageKey: true } });
-      const bin = jest.spyOn(backups, 'binDir', 'get').mockReturnValue('/nonexistent-pg-bin');
+      const bin = breakDump();
       mail.outbox.length = 0;
       const j = (await backups.createJob('SCHEDULED', { windowKey: '2098-05-05' }))!;
       const r = await backups.execute(j.id);
       expect(r.status).toBe('FAILED');
-      expect(r.error).toMatch(/pg_dump/);
+      expect(r.error).toMatch(/could not be read/);
       expect(r.storageKey).toBeNull(); expect(r.sha256).toBeNull();
       expect(r.nextAttemptAt!.getTime()).toBeGreaterThan(Date.now());
       expect(r.error).not.toMatch(/postgresql:\/\//);
@@ -187,7 +195,7 @@ describe('Backups and recovery (e2e: real PostgreSQL, real pg_dump / pg_restore,
 
       // and the scheduler retries a transient failure once the problem is gone
       const j2 = (await backups.createJob('SCHEDULED', { windowKey: '2098-05-06' }))!;
-      const bin2 = jest.spyOn(backups, 'binDir', 'get').mockReturnValue('/nonexistent-pg-bin');
+      const bin2 = breakDump();
       await backups.execute(j2.id); bin2.mockRestore();
       await prisma.backupJob.update({ where: { id: j2.id }, data: { nextAttemptAt: new Date(Date.now() - 1000) } });
       const out = await scheduler.tick(new Date());
@@ -204,13 +212,41 @@ describe('Backups and recovery (e2e: real PostgreSQL, real pg_dump / pg_restore,
       expect(st).toMatchObject({ enabled: false, health: 'disabled', storageOk: false });
       expect(st.warnings.join(' ')).toMatch(/Cloudflare R2 is not configured/);
     });
-    it('explains a missing pg_dump in plain words (and warns on the dashboard before it fails)', async () => {
-      const bin = jest.spyOn(backups, 'binDir', 'get').mockReturnValue('/nonexistent-pg-bin');
+    it('needs no PostgreSQL client tools: a backup and a restore test work with an empty PATH', async () => {
+      const path = process.env.PATH; process.env.PATH = '';
       try {
-        expect((await backups.status()).warnings.join(' ')).toMatch(/pg_dump is not installed/);
+        expect((await backups.status()).warnings.join(' ')).not.toMatch(/pg_dump/);
         const j = (await backups.createJob('MANUAL'))!;
-        expect((await backups.execute(j.id)).error).toMatch(/was not found.*BACKUP_PG_BIN_DIR/);
-      } finally { bin.mockRestore(); }
+        const done = await backups.execute(j.id);
+        expect(done.error).toBeNull(); expect(done.status).toBe('SUCCESSFUL');
+        const v = await backups.verify(j.id, { deep: true });
+        expect(v.ok).toBe(true);
+        expect(v.checks.map((c) => c.name).join(' ')).toMatch(/Archive is complete/);
+      } finally { process.env.PATH = path; }
+    });
+    it('restores every table exactly: the restored database has identical contents and the sequences continue', async () => {
+      const j = (await backups.createJob('MANUAL'))!;
+      expect((await backups.execute(j.id)).status).toBe('SUCCESSFUL');
+      const job = await prisma.backupJob.findUniqueOrThrow({ where: { id: j.id } });
+      const dir = await mkdtemp(join(tmpdir(), 'mk-fidelity-'));
+      const name = `verify_fidelity_${Date.now()}`; dropAfter.push(name);
+      try {
+        const restored = await backups.restoreToNewDatabase(await backups.fetchPlain(job, dir), name);
+        const copy = new PrismaClient({ datasourceUrl: restored.url });
+        try {
+          const tables = (await prisma.$queryRawUnsafe<{ t: string }[]>(`SELECT tablename AS t FROM pg_tables WHERE schemaname = current_schema() AND tablename <> '_prisma_migrations' ORDER BY 1`)).map((r) => r.t);
+          expect(tables.length).toBeGreaterThan(20);
+          // the backup job itself and the audit rows written while/after the snapshot legitimately differ: the audit log must be an exact prefix
+          const [cutoff] = await copy.$queryRawUnsafe<{ m: string }[]>(`SELECT max(seq)::text AS m FROM "AuditLog"`);
+          for (const t of tables.filter((x) => x !== 'BackupJob')) {
+            const sql = `SELECT count(*)::int AS n, coalesce(md5(string_agg(x::text, '|' ORDER BY x::text)), '') AS h FROM "${t}" x${t === 'AuditLog' ? ` WHERE x.seq <= ${cutoff!.m}` : ''}`;
+            expect({ t, ...(await copy.$queryRawUnsafe<{ n: number; h: string }[]>(sql))[0] }).toEqual({ t, ...(await prisma.$queryRawUnsafe<{ n: number; h: string }[]>(sql))[0] });
+          }
+          // the audit log keeps counting from where it was (its sequence was restored)
+          const [b] = await copy.$queryRawUnsafe<{ n: string }[]>(`SELECT nextval(pg_get_serial_sequence('"AuditLog"', 'seq'))::text AS n`);
+          expect(BigInt(b!.n)).toBeGreaterThan(BigInt(cutoff!.m));
+        } finally { await copy.$disconnect(); }
+      } finally { await rm(dir, { recursive: true, force: true }); }
     });
     it('a backup "running" for hours (the process died) is failed so it can be retried', async () => {
       const j = (await backups.createJob('SCHEDULED', { windowKey: '2097-01-01' }))!;
@@ -302,7 +338,7 @@ describe('Backups and recovery (e2e: real PostgreSQL, real pg_dump / pg_restore,
     });
     it('stops before touching anything when the safety snapshot cannot be made', async () => {
       const reauth = jest.spyOn(app.get(AuthService), 'requirePasswordAndCode').mockResolvedValue();
-      const bin = jest.spyOn(backups, 'binDir', 'get').mockReturnValue('/nonexistent-pg-bin');
+      const bin = breakDump();
       const dbsBefore = (await prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int n FROM pg_database WHERE datname LIKE 'recovery\\_%'`))[0].n;
       try {
         const res = await api(app).post('/v1/recoveries').set(bearer(admin)).send(body()).expect(202);
