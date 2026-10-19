@@ -1,3 +1,4 @@
+import { FileSystemUploadType, uploadAsync } from 'expo-file-system/legacy';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import type * as NotificationsModule from 'expo-notifications';
@@ -177,11 +178,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return <AppContext.Provider value={value}><QueryClientProvider client={value.queryClient}>{children}</QueryClientProvider></AppContext.Provider>;
 }
 
-/** PUTs a local file to a pre-signed storage URL (the file never passes through our API). */
+/** PUTs a local file to a pre-signed storage URL (the file never passes through our API). Streamed natively: no copy of the file is held in JavaScript. */
 async function putFile(uri: string, url: string, headers: Record<string, string>): Promise<void> {
-  const blob = await (await fetch(uri)).blob();
-  const res = await fetch(url, { method: 'PUT', headers, body: blob });
-  if (!res.ok) throw Object.assign(new Error('upload failed'), { status: res.status });
+  const res = await uploadAsync(url, uri, { httpMethod: 'PUT', headers, uploadType: FileSystemUploadType.BINARY_CONTENT });
+  if (res.status < 200 || res.status >= 300) throw Object.assign(new Error('upload failed'), { status: res.status });
 }
 
 const PUSH_ASKED = 'pref.pushAsked';

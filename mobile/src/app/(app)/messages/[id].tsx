@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, FlatList, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
+import { AppState, FlatList, Keyboard, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { pickDocument, pickPhoto, type PickOutcome } from '../../../lib/attachments';
 import { describeError } from '../../../lib/errors';
@@ -51,6 +51,13 @@ export default function Chat() {
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [editing, setEditing] = useState<ChatMessage | null>(null);
+  // Keyboard open: the box sits right above the keys (like WhatsApp). Closed: it clears the phone's gesture/navigation bar.
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardUp(true));
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardUp(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   const lastTyping = useRef(0);
   const listRef = useRef<FlatList>(null);
 
@@ -197,7 +204,7 @@ export default function Chat() {
       <StatusBanners />
       {!online ? <View accessibilityLiveRegion="polite" style={{ backgroundColor: c.warnSoft, padding: space.sm }}><Text variant="caption" color={c.warn} style={{ textAlign: 'center' }}>You are offline. Messages will be sent when you are back online.</Text></View> : null}
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 44 : 0}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 44 : 0}>
         {detail.error && !conv ? <ErrorView message={describeError(detail.error)} onRetry={() => void detail.refetch()} /> : msgs.isLoading ? <Loading /> : msgs.error && !msgs.messages.length ? <ErrorView message={describeError(msgs.error)} onRetry={() => void msgs.refetch()} /> : (
           <FlatList
             ref={listRef} inverted data={data} keyExtractor={(i) => i.key} keyboardShouldPersistTaps="handled" onScrollToIndexFailed={() => undefined}
@@ -229,7 +236,7 @@ export default function Chat() {
           </View>
         ) : null}
 
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, padding: space.sm, paddingBottom: space.sm + (Platform.OS === 'ios' ? 0 : 0), backgroundColor: c.bg, borderTopWidth: 1, borderColor: c.border }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, padding: space.sm, paddingBottom: space.sm + (keyboardUp ? 0 : insets.bottom), backgroundColor: c.bg, borderTopWidth: 1, borderColor: c.border }}>
           {!editing ? <Pressable accessibilityRole="button" accessibilityLabel="Attach a file or photo" onPress={() => void attach()} style={{ width: TOUCH, height: TOUCH, alignItems: 'center', justifyContent: 'center' }}><Icon name="add-circle-outline" size="lg" color={c.primary} /></Pressable> : null}
           <TextInput
             accessibilityLabel="Message" value={text} onChangeText={onChange} placeholder="Message" placeholderTextColor={c.muted} multiline maxLength={4000} cursorColor={c.primary} selectionColor={c.primary}
