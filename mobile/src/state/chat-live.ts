@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 
 interface TypingEntry { name: string; until: number }
@@ -34,3 +35,20 @@ export const useChatLive = create<ChatLive>((set) => ({
 /** Names of people currently typing in a conversation (expired entries ignored). */
 export const typingNames = (typing: ChatLive['typing'], conversationId: string, now = Date.now()): string[] =>
   Object.values(typing[conversationId] ?? {}).filter((t) => t.until > now).map((t) => t.name);
+
+const NOBODY: Record<string, TypingEntry> = {};
+
+/** Who is typing in a conversation. Selects the stored (stable) object and derives the names, so the store never sees a fresh array. */
+export function useTypingNames(conversationId: string): string[] {
+  const entries = useChatLive((s) => s.typing[conversationId] ?? NOBODY);
+  const [now, setNow] = useState(() => Date.now());
+  // entries expire on their own: wake up when the next one runs out
+  useEffect(() => {
+    const t0 = Date.now();
+    const next = Object.values(entries).map((t) => t.until).filter((u) => u > t0);
+    if (!next.length) return;
+    const timer = setTimeout(() => setNow(Date.now() + 1), Math.min(...next) - t0 + 20);
+    return () => clearTimeout(timer);
+  }, [entries]);
+  return useMemo(() => Object.values(entries).filter((t) => t.until > now).map((t) => t.name), [entries, now]);
+}

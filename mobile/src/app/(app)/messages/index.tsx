@@ -6,7 +6,7 @@ import { formatInt } from '../../../lib/format';
 import { listTime, typingText } from '../../../lib/chat/messages';
 import type { ConversationSummary } from '../../../lib/chat/types';
 import { useEndpoints } from '../../../state/app';
-import { typingNames, useChatLive } from '../../../state/chat-live';
+import { useTypingNames } from '../../../state/chat-live';
 import { useCan } from '../../../state/store';
 import { SearchBar, Text } from '../../../ui/components';
 import { ChatAvatar } from '../../../ui/chat/chat-avatar';
@@ -18,7 +18,7 @@ import { chatKeys } from '../../../services/chat-events';
 function Row({ c: conv }: { c: ConversationSummary }) {
   const router = useRouter();
   const c = useColors();
-  const typing = useChatLive((s) => typingNames(s.typing, conv.id));
+  const typing = useTypingNames(conv.id);
   const mine = conv.lastMessage?.senderName;
   const preview = typing.length ? typingText(typing) : conv.lastMessage ? `${conv.type === 'GROUP' && mine && conv.lastMessage.kind !== 'SYSTEM' ? `${mine}: ` : ''}${conv.lastMessage.preview}` : 'No messages yet';
   const unread = conv.unread > 0;

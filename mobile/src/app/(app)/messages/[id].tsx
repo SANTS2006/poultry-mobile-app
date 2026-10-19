@@ -14,7 +14,7 @@ import { getCallManager, sendRealtime } from '../../../services/call-bridge';
 import { usePending } from '../../../services/chat-sender';
 import { callsSupported } from '../../../services/webrtc-engine';
 import { useApp, useEndpoints } from '../../../state/app';
-import { typingNames, useChatLive } from '../../../state/chat-live';
+import { useChatLive, useTypingNames } from '../../../state/chat-live';
 import { useAppStore, useCan } from '../../../state/store';
 import { Button, ErrorView, Loading, Text } from '../../../ui/components';
 import { ChatAvatar } from '../../../ui/chat/chat-avatar';
@@ -44,7 +44,7 @@ export default function Chat() {
   const config = useQuery({ queryKey: ['chat', 'config'], queryFn: () => api.chat.config(), staleTime: 3600_000 });
   const msgs = useMessages(id);
   const pending = usePending((s) => s.list).filter((p) => p.conversationId === id);
-  const typing = useChatLive((s) => typingNames(s.typing, id));
+  const typing = useTypingNames(id);
   const conv = detail.data;
   const meId = me?.id ?? '';
 
@@ -166,30 +166,34 @@ export default function Chat() {
   const subtitle = typing.length ? typingText(typing) : group ? `${conv?.memberCount ?? 0} people` : conv?.peerOnline ? 'Online' : '';
   const members = conv?.members ?? [];
 
+  // memoized so the navigator is not handed new header functions on every render (that loops once typing/presence updates arrive)
+  const peerId = conv?.type === 'DIRECT' ? conv.peerId : null;
+  const headerOptions = useMemo(() => ({
+      headerTitle: () => (
+        <Pressable accessibilityRole="button" accessibilityLabel={`${title}. Conversation details`} onPress={() => router.push({ pathname: '/messages/info/[id]', params: { id } } as never)} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, maxWidth: 230 }}>
+          <ChatAvatar name={title} size={36} userId={peerId} groupId={group ? id : undefined} hasAvatar={conv?.hasAvatar} version={conv?.avatarVersion} online={conv?.peerOnline} />
+          <View style={{ flexShrink: 1 }}>
+            <Text variant="bodyStrong" numberOfLines={1}>{title}</Text>
+            {subtitle ? <Text variant="caption" color={typing.length ? c.primary : c.muted} numberOfLines={1}>{subtitle}</Text> : null}
+          </View>
+        </Pressable>
+      ),
+      headerRight: () => (
+        <View style={{ flexDirection: 'row' }}>
+          {canCall && !group ? (
+            <>
+              <Pressable accessibilityRole="button" accessibilityLabel="Voice call" hitSlop={6} onPress={() => call('AUDIO')} style={{ width: 40, height: TOUCH, alignItems: 'center', justifyContent: 'center' }}><Icon name="call-outline" size="md" color={c.text} /></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Video call" hitSlop={6} onPress={() => call('VIDEO')} style={{ width: 40, height: TOUCH, alignItems: 'center', justifyContent: 'center' }}><Icon name="videocam-outline" size="md" color={c.text} /></Pressable>
+            </>
+          ) : null}
+          <Pressable accessibilityRole="button" accessibilityLabel="Conversation details" hitSlop={6} onPress={() => router.push({ pathname: '/messages/info/[id]', params: { id } } as never)} style={{ width: 40, height: TOUCH, alignItems: 'center', justifyContent: 'center' }}><Icon name="information-circle-outline" size="md" color={c.text} /></Pressable>
+        </View>
+      ),
+    }), [title, subtitle, typing.length, c, router, id, group, peerId, conv?.hasAvatar, conv?.avatarVersion, conv?.peerOnline, canCall]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <Stack.Screen options={{
-        headerTitle: () => (
-          <Pressable accessibilityRole="button" accessibilityLabel={`${title}. Conversation details`} onPress={() => router.push({ pathname: '/messages/info/[id]', params: { id } } as never)} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, maxWidth: 230 }}>
-            <ChatAvatar name={title} size={36} userId={conv?.type === 'DIRECT' ? conv.peerId : null} groupId={group ? id : undefined} hasAvatar={conv?.hasAvatar} version={conv?.avatarVersion} online={conv?.peerOnline} />
-            <View style={{ flexShrink: 1 }}>
-              <Text variant="bodyStrong" numberOfLines={1}>{title}</Text>
-              {subtitle ? <Text variant="caption" color={typing.length ? c.primary : c.muted} numberOfLines={1}>{subtitle}</Text> : null}
-            </View>
-          </Pressable>
-        ),
-        headerRight: () => (
-          <View style={{ flexDirection: 'row' }}>
-            {canCall && !group ? (
-              <>
-                <Pressable accessibilityRole="button" accessibilityLabel="Voice call" hitSlop={6} onPress={() => call('AUDIO')} style={{ width: 40, height: TOUCH, alignItems: 'center', justifyContent: 'center' }}><Icon name="call-outline" size="md" color={c.text} /></Pressable>
-                <Pressable accessibilityRole="button" accessibilityLabel="Video call" hitSlop={6} onPress={() => call('VIDEO')} style={{ width: 40, height: TOUCH, alignItems: 'center', justifyContent: 'center' }}><Icon name="videocam-outline" size="md" color={c.text} /></Pressable>
-              </>
-            ) : null}
-            <Pressable accessibilityRole="button" accessibilityLabel="Conversation details" hitSlop={6} onPress={() => router.push({ pathname: '/messages/info/[id]', params: { id } } as never)} style={{ width: 40, height: TOUCH, alignItems: 'center', justifyContent: 'center' }}><Icon name="information-circle-outline" size="md" color={c.text} /></Pressable>
-          </View>
-        ),
-      }} />
+      <Stack.Screen options={headerOptions} />
       <StatusBanners />
       {!online ? <View accessibilityLiveRegion="polite" style={{ backgroundColor: c.warnSoft, padding: space.sm }}><Text variant="caption" color={c.warn} style={{ textAlign: 'center' }}>You are offline. Messages will be sent when you are back online.</Text></View> : null}
 
