@@ -191,14 +191,14 @@ describe('Chat, groups, attachments, push and calls (e2e: real PostgreSQL, real 
       const other = await say('owner', await dm('owner', 'mgr'), 'elsewhere');
       await req('post', `/chat/conversations/${conv}/messages`, 'prod', { clientId: randomUUID(), kind: 'TEXT', body: 'x', replyToId: other.id }).expect(400);
     });
-    it('lets only the author edit (within 15 minutes) and shows the edit live', async () => {
+    it('lets only the author edit (within 24 hours) and shows the edit live', async () => {
       const listener = await connect('prod');
       const m = await say('owner', conv, 'typo');
       await req('patch', `/chat/messages/${m.id}`, 'prod', { body: 'hacked' }).expect(403);
       const e = (await req('patch', `/chat/messages/${m.id}`, 'owner', { body: 'fixed' }).expect(200)).body;
       expect(e).toMatchObject({ body: 'fixed' }); expect(e.editedAt).toBeTruthy();
       await until(() => named(listener.ev, 'chat.message.updated').length === 1);
-      await prisma.message.update({ where: { id: m.id }, data: { createdAt: new Date(Date.now() - 20 * 60_000) } });
+      await prisma.message.update({ where: { id: m.id }, data: { createdAt: new Date(Date.now() - 25 * 3_600_000) } });
       await req('patch', `/chat/messages/${m.id}`, 'owner', { body: 'too late' }).expect(400);
       listener.s.close();
     });

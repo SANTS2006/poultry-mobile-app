@@ -1,11 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { Image, Linking, Pressable, View } from 'react-native';
+import { useState } from 'react';
+import { Image, Pressable, View } from 'react-native';
 import { callMessageText, deliveryStatus, formatFileSize, timeLabel } from '../../lib/chat/messages';
 import type { ChatMessage, ConversationMember, PendingMessage } from '../../lib/chat/types';
 import { useEndpoints } from '../../state/app';
 import { Text } from '../components';
 import { Icon } from '../icon';
 import { radius, space, useColors } from '../theme';
+import { AttachmentViewer } from './attachment-viewer';
+import { CALL } from './call-colors';
 
 /** A short-lived download link for an attachment (refreshed before it expires). Fetched only when the bubble is on screen. */
 function useAttachmentUrl(id: string | undefined, enabled: boolean) {
@@ -18,7 +21,7 @@ function Ticks({ status, color }: { status: ReturnType<typeof deliveryStatus> | 
   if (status === 'sending') return <Icon name="time-outline" size={13} color={color} />;
   if (status === 'failed') return <Icon name="alert-circle" size={14} color={c.danger} />;
   if (status === 'sent') return <Icon name="checkmark" size={14} color={color} />;
-  return <Icon name="checkmark-done" size={14} color={status === 'read' ? c.info : color} />;
+  return <Icon name="checkmark-done" size={14} color={status === 'read' ? CALL.readTick : color} />;
 }
 
 export function Quote({ r, mine }: { r: NonNullable<ChatMessage['replyTo']>; mine: boolean }) {
@@ -35,20 +38,29 @@ function AttachmentView({ a, mine, kind }: { a: NonNullable<ChatMessage['attachm
   const c = useColors();
   const isImage = kind === 'IMAGE';
   const q = useAttachmentUrl(a.id, true);
+  const [open, setOpen] = useState(false);
   const fg = mine ? c.onPrimary : c.text;
+  const viewer = <AttachmentViewer file={open && q.data ? { url: q.data.url, fileName: a.fileName, mimeType: a.mimeType, sizeBytes: a.sizeBytes } : null} image={isImage} onClose={() => setOpen(false)} />;
   if (isImage) {
     return q.data ? (
-      <Pressable accessibilityRole="imagebutton" accessibilityLabel={`Photo ${a.fileName}. Tap to open`} onPress={() => void Linking.openURL(q.data.url)}>
-        <Image accessibilityIgnoresInvertColors source={{ uri: q.data.url }} style={{ width: 220, height: 220, borderRadius: radius.md, backgroundColor: c.skeleton }} resizeMode="cover" />
-      </Pressable>
+      <>
+        <Pressable accessibilityRole="imagebutton" accessibilityLabel={`Photo ${a.fileName}. Tap to view and save`} onPress={() => setOpen(true)}>
+          <Image accessibilityIgnoresInvertColors source={{ uri: q.data.url }} style={{ width: 220, height: 220, borderRadius: radius.md, backgroundColor: c.skeleton }} resizeMode="cover" />
+        </Pressable>
+        {viewer}
+      </>
     ) : <View style={{ width: 220, height: 160, borderRadius: radius.md, backgroundColor: c.skeleton, alignItems: 'center', justifyContent: 'center' }}><Text variant="caption" muted>{q.isError ? 'Photo unavailable' : 'Loading photo…'}</Text></View>;
   }
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`File ${a.fileName}, ${formatFileSize(a.sizeBytes)}. Tap to open`} disabled={!q.data} onPress={() => q.data && void Linking.openURL(q.data.url)}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minWidth: 200 }}>
-      <Icon name="document-text-outline" size="lg" color={fg} />
-      <View style={{ flex: 1 }}><Text color={fg} numberOfLines={2} bold>{a.fileName}</Text><Text variant="caption" color={fg}>{formatFileSize(a.sizeBytes)}{q.isError ? ' · unavailable' : ''}</Text></View>
-    </Pressable>
+    <>
+      <Pressable accessibilityRole="button" accessibilityLabel={`File ${a.fileName}, ${formatFileSize(a.sizeBytes)}. Tap to open or save`} disabled={!q.data} onPress={() => setOpen(true)}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minWidth: 200 }}>
+        <Icon name="document-text-outline" size="lg" color={fg} />
+        <View style={{ flex: 1 }}><Text color={fg} numberOfLines={2} bold>{a.fileName}</Text><Text variant="caption" color={fg}>{formatFileSize(a.sizeBytes)}{q.isError ? ' · unavailable' : ' · tap to open or save'}</Text></View>
+        <Icon name="download-outline" size="md" color={fg} />
+      </Pressable>
+      {viewer}
+    </>
   );
 }
 

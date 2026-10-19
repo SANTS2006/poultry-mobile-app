@@ -34,7 +34,7 @@ export function createEndpoints(api: ApiClient) {
     setPrice: (unit: Unit, amount: string, reason: string) => post('/prices', { unit, amount, reason }),
 
     chat: {
-      config: () => get<{ attachments: boolean; maxAttachmentBytes: number; maxMessageChars: number; maxGroupMembers: number; allowedTypes: string[] }>('/chat/config'),
+      config: () => get<{ attachments: boolean; maxAttachmentBytes: number; maxMessageChars: number; maxGroupMembers: number; allowedTypes: string[]; editWindowMinutes?: number }>('/chat/config'),
       users: (p: Params) => get<Page<ChatUser>>('/chat/users', p),
       conversations: (p: Params) => get<Page<ConversationSummary>>('/chat/conversations', p),
       conversation: (id: string) => get<ConversationDetail>(`/chat/conversations/${id}`),

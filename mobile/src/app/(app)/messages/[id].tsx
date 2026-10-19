@@ -25,7 +25,6 @@ import { StatusBanners } from '../../../ui/status-banners';
 import { radius, space, TOUCH, useColors } from '../../../ui/theme';
 import { useToast } from '../../../ui/toast';
 
-const EDIT_WINDOW_MS = 15 * 60_000;
 
 export default function Chat() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -51,11 +50,17 @@ export default function Chat() {
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [editing, setEditing] = useState<ChatMessage | null>(null);
-  // Keyboard open: the box sits right above the keys (like WhatsApp). Closed: it clears the phone's gesture/navigation bar.
+  // Keyboard open: the box sits right above the keys (like WhatsApp). iOS lets KeyboardAvoidingView do it; on Android the window does not
+  // shrink for the keyboard, so we measure how much of the screen the keyboard covers and lift the whole chat by that amount.
   const [keyboardUp, setKeyboardUp] = useState(false);
+  const [lift, setLift] = useState(0);
+  const frame = useRef<View>(null);
   useEffect(() => {
-    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardUp(true));
-    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardUp(false));
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
+      setKeyboardUp(true);
+      if (Platform.OS !== 'ios') frame.current?.measureInWindow((_x, y, _w, h) => setLift(Math.max(0, Math.round(y + h - e.endCoordinates.screenY))));
+    });
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => { setKeyboardUp(false); setLift(0); });
     return () => { show.remove(); hide.remove(); };
   }, []);
   const lastTyping = useRef(0);
@@ -134,7 +139,7 @@ export default function Chat() {
 
   async function options(m: ChatMessage) {
     const mine = m.senderId === meId;
-    const canEdit = mine && m.kind === 'TEXT' && !m.deleted && Date.now() - new Date(m.createdAt).getTime() < EDIT_WINDOW_MS;
+    const canEdit = mine && m.kind === 'TEXT' && !m.deleted && Date.now() - new Date(m.createdAt).getTime() < (config.data?.editWindowMinutes ?? 60) * 60_000;
     const canDelete = !m.deleted && (mine || (group && iAmAdmin));
     const pick = await dialog.ask<'reply' | 'copy' | 'edit' | 'delete' | 'report' | 'cancel'>({
       title: 'Message', tone: 'info', icon: 'chatbubble-ellipses-outline',
@@ -199,12 +204,12 @@ export default function Chat() {
     }), [title, subtitle, typing.length, c, router, id, group, peerId, conv?.hasAvatar, conv?.avatarVersion, conv?.peerOnline, canCall]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <View style={{ flex: 1, backgroundColor: c.bg }}>
+    <View ref={frame} collapsable={false} style={{ flex: 1, backgroundColor: c.bg, paddingBottom: lift }}>
       <Stack.Screen options={headerOptions} />
       <StatusBanners />
       {!online ? <View accessibilityLiveRegion="polite" style={{ backgroundColor: c.warnSoft, padding: space.sm }}><Text variant="caption" color={c.warn} style={{ textAlign: 'center' }}>You are offline. Messages will be sent when you are back online.</Text></View> : null}
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 44 : 0}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 44 : 0}>
         {detail.error && !conv ? <ErrorView message={describeError(detail.error)} onRetry={() => void detail.refetch()} /> : msgs.isLoading ? <Loading /> : msgs.error && !msgs.messages.length ? <ErrorView message={describeError(msgs.error)} onRetry={() => void msgs.refetch()} /> : (
           <FlatList
             ref={listRef} inverted data={data} keyExtractor={(i) => i.key} keyboardShouldPersistTaps="handled" onScrollToIndexFailed={() => undefined}
