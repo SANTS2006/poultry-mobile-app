@@ -467,6 +467,23 @@ describe('Authentication, sessions, MFA, RBAC (e2e, real PostgreSQL)', () => {
       expect(await prisma.passwordResetCode.findFirstOrThrow({ where: { userId: u.id } }).then((r) => r.codeHash)).not.toContain(code); // only a keyed hash is stored
     });
 
+    it('pressing the button many times at once (or again at once) sends exactly one e-mail and one code', async () => {
+      const u = await makeUser(prisma, { roles: ['SALES_STAFF'] });
+      mail.outbox.length = 0;
+      await Promise.all(Array.from({ length: 6 }, () => reset(u.email)));
+      await reset(u.email);
+      await reset(u.email.toUpperCase()); // same address, written differently
+      expect(mail.outbox.filter((m) => m.to === u.email && m.subject.includes('reset code'))).toHaveLength(1);
+      expect(await prisma.passwordResetCode.count({ where: { userId: u.id } })).toBe(1);
+      // once the minute is over, a new request replaces the old code and the old one stops working
+      const first = codeFromMail(u.email);
+      await expireCooldown(u.id);
+      await reset(u.email);
+      expect(mail.outbox.filter((m) => m.to === u.email && m.subject.includes('reset code'))).toHaveLength(2);
+      await resetPw(u.email, first, newPw).expect(400);
+      await resetPw(u.email, codeFromMail(u.email), newPw).expect(204);
+    });
+
     it('the code works only for the e-mail address it was sent to, and only while the account still has that address', async () => {
       const a = await makeUser(prisma, { roles: ['SALES_STAFF'] });
       const b = await makeUser(prisma, { roles: ['SALES_STAFF'] });

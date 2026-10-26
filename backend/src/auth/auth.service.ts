@@ -1,8 +1,9 @@
 import {
-  BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, NotFoundException, UnauthorizedException,
+  BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException,
 } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DomainEvents } from '../domain/events.service';
+import { background } from '../common/background';
 import { PasswordService } from '../common/crypto/password.service';
 import { MailComposer } from '../mail/mail-composer.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -242,7 +243,7 @@ export class AuthService {
         throw new BadRequestException('That email address is no longer available. Request the change again with a different one.');
       }
       await this.audit.record({ action: 'auth.email.changed', userId, entityType: 'user', entityId: userId, before: { email: user.email }, after: { email: user.pendingEmail } });
-      await this.mail.send(user.email, 'Your email address was changed', {
+      await this.notify(user.email, 'Your email address was changed', {
         preheader: 'The sign-in email for your account changed.', heading: 'Your email address was changed',
         paragraphs: [`The sign-in email for your account is now ${user.pendingEmail}.`], note: 'If this was not you, contact an administrator immediately.',
       });
@@ -253,11 +254,26 @@ export class AuthService {
   }
 
   /** Always resolves the same way whether or not the account exists (no user enumeration). */
-  async resendVerification(emailRaw: string): Promise<void> {
-    const user = await this.prisma.user.findUnique({ where: { email: emailRaw.trim().toLowerCase() } });
-    if (!user || user.emailVerified || user.status === 'DISABLED' || !user.passwordHash) return;
-    const token = await this.emailTokens.issue(user.id, 'VERIFY_EMAIL');
-    await this.emailTokens.sendLink(user.email, 'VERIFY_EMAIL', token);
+  resendVerification(emailRaw: string): Promise<void> | void {
+    const email = emailRaw.trim().toLowerCase();
+    if (this.resending.has(email)) return; // a repeat tap while the first is being handled changes nothing
+    this.resending.add(email);
+    return background(async () => {
+      try {
+        const user = await this.prisma.user.findUnique({ where: { email } });
+        if (!user || user.emailVerified || user.status === 'DISABLED' || !user.passwordHash) return;
+        const token = await this.emailTokens.issue(user.id, 'VERIFY_EMAIL');
+        await this.emailTokens.sendLink(user.email, 'VERIFY_EMAIL', token);
+      } finally { this.resending.delete(email); }
+    }, (e) => this.log.error({ err: e instanceof Error ? e.message : 'failed' }, 'Could not send the verification email'));
+  }
+
+  private readonly resending = new Set<string>();
+  private readonly log = new Logger(AuthService.name);
+
+  /** Security notices ("your password was changed") go out after the answer, so they never slow the person down. */
+  private notify(to: string, subject: string, content: Parameters<MailComposer['send']>[2]): Promise<void> | void {
+    return background(() => this.mail.send(to, subject, content), (e) => this.log.error({ err: e instanceof Error ? e.message : 'failed' }, 'Could not send a security notice'));
   }
 
   /**
@@ -282,7 +298,7 @@ export class AuthService {
       await this.audit.record({ action: 'auth.password.first_set', userId: user.id, entityType: 'user', entityId: user.id, ip: meta.ip, requestId: meta.requestId }, tx);
       return u;
     });
-    await this.mail.send(user.email, 'Your password was set', {
+    await this.notify(user.email, 'Your password was set', {
       preheader: 'Your account is ready to use.', heading: 'Your password was set',
       paragraphs: ['You replaced your temporary password and your account is now active.'],
       note: 'If this was not you, contact an administrator immediately.',
@@ -292,7 +308,7 @@ export class AuthService {
 
   /** Sends an 8-digit, 5-minute, single-use reset code (see PasswordResetService). Always answers the same way. */
   async forgotPassword(emailRaw: string, meta: RequestMeta): Promise<void> {
-    await this.resets.request(emailRaw, meta);
+    await this.resets.request(emailRaw, meta); // returns at once in production; the code is stored and e-mailed in the background
   }
 
   async resetPassword(emailRaw: string, code: string, newPassword: string, meta: RequestMeta): Promise<void> {
@@ -314,7 +330,7 @@ export class AuthService {
     });
     await this.sessions.revokeAllForUser(userId, 'password_reset'); // a reset signs out every device
     this.events.emit({ name: 'security.event', entityId: userId, data: { kind: 'password_changed' } });
-    await this.mail.send(user.email, 'Your password was changed', {
+    await this.notify(user.email, 'Your password was changed', {
       preheader: 'Your password was reset.', heading: 'Your password was reset',
       paragraphs: ['Your password was just reset and every device was signed out.'], note: 'If this was not you, contact an administrator immediately.',
     });
@@ -337,7 +353,7 @@ export class AuthService {
     });
     await this.sessions.revokeAllForUser(user.id, 'password_changed', user.familyId); // keep only this device signed in
     this.events.emit({ name: 'security.event', entityId: user.id, data: { kind: 'password_changed' } });
-    await this.mail.send(user.email, 'Your password was changed', {
+    await this.notify(user.email, 'Your password was changed', {
       preheader: 'Your password was changed.', heading: 'Your password was changed',
       paragraphs: ['Your password was just changed.'], note: 'If this was not you, contact an administrator immediately.',
     });
