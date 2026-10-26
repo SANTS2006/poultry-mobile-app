@@ -7,6 +7,8 @@ import { useApp } from '../../state/app';
 import { useAuthFlow } from '../../state/auth-flow';
 import { AuthShell } from '../../ui/auth-shell';
 import { Button, Card, Field, InlineError, Text } from '../../ui/components';
+import { PasswordRules } from '../../ui/password-rules';
+import { validatePassword } from '../../lib/password';
 import { useSecureScreen } from '../../ui/secure-screen';
 import { space } from '../../ui/theme';
 
@@ -26,6 +28,7 @@ export default function FirstPassword() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const token = flow.passwordToken;
+  const ready = validatePassword(form.values.password).length === 0 && form.values.password === form.values.confirm;
 
   useEffect(() => { if (!token) router.replace('/login'); }, [token, router]);
 
@@ -47,12 +50,13 @@ export default function FirstPassword() {
 
   return (
     <AuthShell compact title="Choose your own password" subtitle="You signed in with a temporary password. Pick a new one to finish setting up your account.">
-      <Card tone="info"><Text>Use at least 12 characters. A few unrelated words are easy to remember and hard to guess. The temporary password stops working once you do this.</Text></Card>
+      <Card tone="info"><Text>Choose a password only you know. A few unrelated words are easy to remember and hard to guess. The temporary password stops working once you do this.</Text></Card>
       <View style={{ gap: space.lg }}>
         <Field pill label="New password" icon="lock-closed-outline" {...form.field('password')} placeholder="At least 12 characters" secureTextEntry textContentType="newPassword" />
         <Field pill label="Repeat new password" icon="lock-closed-outline" {...form.field('confirm')} placeholder="Repeat the new password" secureTextEntry textContentType="newPassword" returnKeyType="done" onSubmitEditing={() => void submit()} />
+        <PasswordRules password={form.values.password} confirm={form.values.confirm} />
         <InlineError message={error} />
-        <Button pill title="Save and continue" icon="checkmark" onPress={() => void submit()} busy={busy} />
+        <Button pill title="Save and continue" icon="checkmark" onPress={() => void submit()} busy={busy} disabled={!ready} />
         <Button pill title="Cancel" variant="ghost" onPress={() => { flow.clear(); router.replace('/login'); }} />
       </View>
     </AuthShell>
