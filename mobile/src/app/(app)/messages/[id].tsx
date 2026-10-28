@@ -3,6 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, FlatList, Keyboard, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
+import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { pickDocument, pickPhoto, type PickOutcome } from '../../../lib/attachments';
 import { describeError } from '../../../lib/errors';
@@ -51,21 +52,16 @@ export default function Chat() {
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [editing, setEditing] = useState<ChatMessage | null>(null);
-  // Keyboard open: the box sits right above the keys (like WhatsApp). iOS lets KeyboardAvoidingView do it; on Android the window does not
-  // shrink for the keyboard, so we measure how much of the screen the keyboard covers and lift the whole chat by that amount.
+  // Keyboard open: the whole chat is pushed up by the keyboard's height, so the message box sits right above the keys (like WhatsApp).
+  // iOS lets KeyboardAvoidingView do it. On Android the app draws edge to edge and the window does NOT shrink for the keyboard, so the
+  // keyboard height is read straight from the system (it follows the keyboard's animation) and applied as bottom padding.
   const [keyboardUp, setKeyboardUp] = useState(false);
   const [focused, setFocused] = useState(false);
-  const [lift, setLift] = useState(0);
-  const frame = useRef<View>(null);
+  const keyboard = useAnimatedKeyboard({ isStatusBarTranslucentAndroid: true });
+  const lift = useAnimatedStyle(() => ({ paddingBottom: Platform.OS === 'android' ? keyboard.height.value : 0 }));
   useEffect(() => {
-    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
-      setKeyboardUp(true);
-      if (Platform.OS === 'ios') return;
-      // measured more than once: some phones resize the window a moment after the keyboard appears (then there is nothing left to lift)
-      const measure = () => frame.current?.measureInWindow((_x, y, _w, h) => setLift(Math.max(0, Math.round(y + h - e.endCoordinates.screenY))));
-      measure(); setTimeout(measure, 150); setTimeout(measure, 400);
-    });
-    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => { setKeyboardUp(false); setLift(0); });
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardUp(true));
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardUp(false));
     return () => { show.remove(); hide.remove(); };
   }, []);
   const lastTyping = useRef(0);
@@ -210,7 +206,7 @@ export default function Chat() {
     }), [title, subtitle, typing.length, c, router, id, group, peerId, conv?.hasAvatar, conv?.avatarVersion, conv?.peerOnline, canChat, conv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <View ref={frame} collapsable={false} style={{ flex: 1, backgroundColor: c.bg, paddingBottom: lift }}>
+    <Animated.View style={[{ flex: 1, backgroundColor: c.bg }, lift]}>
       <Stack.Screen options={headerOptions} />
       <StatusBanners />
       {!online ? <View accessibilityLiveRegion="polite" style={{ backgroundColor: c.warnSoft, padding: space.sm }}><Text variant="caption" color={c.warn} style={{ textAlign: 'center' }}>You are offline. Messages will be sent when you are back online.</Text></View> : null}
@@ -259,6 +255,6 @@ export default function Chat() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
-    </View>
+    </Animated.View>
   );
 }
