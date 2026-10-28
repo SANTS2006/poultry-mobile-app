@@ -37,7 +37,7 @@ Socket events — client→server: `chat.typing`, `chat.delivered`, `call.signal
 Membership checked on every read/write; group-admin checks on every privileged operation; blocked users cannot DM; attachments are random keys, size/type validated server-side (HEAD after upload), download URLs issued per request (5 min) after a membership check; call signaling relayed only between the two participants of a live call; TURN credentials short-lived and server-generated (secrets never in the app); rate limits on sends/uploads/calls and on socket events; message bodies never written to logs; lock-screen push shows "New message" unless the user enables previews.
 
 ## 6. Limits
-Message 4 000 chars · attachment 15 MB (jpeg/png/webp/gif/pdf/txt/csv/doc(x)/xls(x)) · group 100 members · 5 sockets per user · call ring 45 s · one live call per user · edit window 15 min.
+Message 4 000 chars · attachment 50 MB (jpeg/png/webp/gif, mp4/mov/3gp/webm video, pdf/txt/csv/doc(x)/xls(x)); several files can be picked at once, each is its own message · group 100 members · 5 sockets per user · call ring 45 s · one live call per user · edit window 15 min.
 
 
 ## 7. Mobile screens (Stage G)

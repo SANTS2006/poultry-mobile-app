@@ -1,6 +1,6 @@
 export const MAX_MESSAGE_CHARS = 4000;
 export const MAX_GROUP_MEMBERS = 100;
-export const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+export const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
 export const EDIT_WINDOW_MS = 24 * 60 * 60_000;
 export const PAGE_SIZE_DEFAULT = 30;
 export const PAGE_SIZE_MAX = 60;
@@ -15,6 +15,7 @@ export const ALLOWED_ATTACHMENT_TYPES: Record<string, 'IMAGE' | 'FILE'> = {
   'image/jpeg': 'IMAGE', 'image/png': 'IMAGE', 'image/webp': 'IMAGE', 'image/gif': 'IMAGE',
   'application/pdf': 'FILE', 'text/plain': 'FILE', 'text/csv': 'FILE',
   'application/msword': 'FILE', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'FILE',
+  'video/mp4': 'FILE', 'video/quicktime': 'FILE', 'video/3gpp': 'FILE', 'video/webm': 'FILE', // videos travel as files; the app shows them as videos
   'application/vnd.ms-excel': 'FILE', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'FILE',
 };
 

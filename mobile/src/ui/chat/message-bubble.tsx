@@ -37,10 +37,11 @@ export function Quote({ r, mine }: { r: NonNullable<ChatMessage['replyTo']>; min
 function AttachmentView({ a, mine, kind }: { a: NonNullable<ChatMessage['attachment']>; mine: boolean; kind: string }) {
   const c = useColors();
   const isImage = kind === 'IMAGE';
+  const isVideo = !isImage && a.mimeType.startsWith('video/');
   const q = useAttachmentUrl(a.id, true);
   const [open, setOpen] = useState(false);
   const fg = mine ? c.onPrimary : c.text;
-  const viewer = <AttachmentViewer file={open && q.data ? { url: q.data.url, fileName: a.fileName, mimeType: a.mimeType, sizeBytes: a.sizeBytes } : null} image={isImage} onClose={() => setOpen(false)} />;
+  const viewer = <AttachmentViewer file={open && q.data ? { url: q.data.url, fileName: a.fileName, mimeType: a.mimeType, sizeBytes: a.sizeBytes } : null} image={isImage} video={isVideo} onClose={() => setOpen(false)} />;
   if (isImage) {
     return q.data ? (
       <>
@@ -50,6 +51,19 @@ function AttachmentView({ a, mine, kind }: { a: NonNullable<ChatMessage['attachm
         {viewer}
       </>
     ) : <View style={{ width: 220, height: 160, borderRadius: radius.md, backgroundColor: c.skeleton, alignItems: 'center', justifyContent: 'center' }}><Text variant="caption" muted>{q.isError ? 'Photo unavailable' : 'Loading photo…'}</Text></View>;
+  }
+  if (isVideo) {
+    return (
+      <>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Video ${a.fileName}, ${formatFileSize(a.sizeBytes)}. Tap to play or save`} disabled={!q.data} onPress={() => setOpen(true)}
+          style={{ width: 220, height: 160, borderRadius: radius.md, backgroundColor: CALL.bg, alignItems: 'center', justifyContent: 'center', gap: space.xs }}>
+          <Icon name="play-circle" size={52} color={CALL.fg} />
+          <Text variant="caption" color={CALL.fg} numberOfLines={1} style={{ maxWidth: 200 }}>{a.fileName}</Text>
+          <Text variant="caption" color={CALL.fg}>{formatFileSize(a.sizeBytes)}{q.isError ? ' · unavailable' : ''}</Text>
+        </Pressable>
+        {viewer}
+      </>
+    );
   }
   return (
     <>
@@ -113,7 +127,7 @@ export function PendingBubble({ p, onRetry, onDiscard }: { p: PendingMessage; on
   return (
     <View style={{ paddingHorizontal: space.md, paddingVertical: 2, alignItems: 'flex-end' }}>
       <View style={{ maxWidth: '82%', backgroundColor: c.primary, opacity: failed ? 0.75 : 0.9, borderRadius: radius.lg, borderBottomRightRadius: 6, paddingHorizontal: space.md, paddingVertical: space.sm, gap: 4, borderWidth: failed ? 2 : 0, borderColor: c.danger }}>
-        {p.file ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}><Icon name={p.kind === 'IMAGE' ? 'image-outline' : 'document-text-outline'} size="md" color={c.onPrimary} /><Text color={c.onPrimary} numberOfLines={1} style={{ flex: 1 }}>{p.file.fileName}</Text></View> : null}
+        {p.file ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}><Icon name={p.kind === 'IMAGE' ? 'image-outline' : p.file.mimeType.startsWith('video/') ? 'videocam-outline' : 'document-text-outline'} size="md" color={c.onPrimary} /><Text color={c.onPrimary} numberOfLines={1} style={{ flex: 1 }}>{p.file.fileName}</Text></View> : null}
         {p.body ? <Text color={c.onPrimary}>{p.body}</Text> : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-end' }}>
           <Text variant="caption" color={c.onPrimary} style={{ fontSize: 10 }}>{timeLabel(p.createdAt)}</Text>

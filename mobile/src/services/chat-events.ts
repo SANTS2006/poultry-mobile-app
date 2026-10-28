@@ -78,7 +78,7 @@ export function handleChatEvent(ctx: ChatEventContext, name: string, p: any): vo
       else {
         qc.setQueryData<ConvData>(chatKeys.conversations, (d) => bumpToTop(patchConversation(d, m.conversationId, (c) => ({
           ...c, lastSeq: Math.max(c.lastSeq, m.seq), lastMessageAt: m.createdAt,
-          lastMessage: { id: m.id, kind: m.kind, preview: m.deleted ? 'Message deleted' : m.kind === 'IMAGE' ? 'Photo' : m.kind === 'FILE' ? 'File' : m.body.slice(0, 80), senderId: m.senderId, senderName: m.senderName, createdAt: m.createdAt, deleted: m.deleted },
+          lastMessage: { id: m.id, kind: m.kind, preview: m.deleted ? 'Message deleted' : m.kind === 'IMAGE' ? 'Photo' : m.kind === 'FILE' ? (m.attachment?.mimeType.startsWith('video/') ? 'Video' : 'File') : m.body.slice(0, 80), senderId: m.senderId, senderName: m.senderName, createdAt: m.createdAt, deleted: m.deleted },
           unread: mine || open || m.kind === 'SYSTEM' ? c.unread : c.unread + 1,
         })), m.conversationId));
       }

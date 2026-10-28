@@ -45,7 +45,7 @@ describe('message list', () => {
   it('checks attachments before upload', () => {
     expect(checkAttachment('image/png', 1000)).toBeNull();
     expect(checkAttachment('application/x-msdownload', 1000)).toMatch(/cannot be shared/);
-    expect(checkAttachment('image/png', 16 * 1024 * 1024)).toMatch(/15 MB/);
+    expect(checkAttachment('image/png', 51 * 1024 * 1024)).toMatch(/50 MB/);
     expect(checkAttachment('image/png', 0)).toMatch(/empty/);
   });
 });

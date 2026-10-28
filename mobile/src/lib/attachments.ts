@@ -37,3 +37,57 @@ export async function pickDocument(): Promise<PickOutcome> {
     return bad ? { ok: false, reason: 'invalid', message: bad } : { ok: true, file: { uri: a.uri, fileName: a.name, mimeType, sizeBytes: a.size ?? 0 } };
   } catch (e) { return { ok: false, reason: 'error', message: e instanceof Error ? e.message : undefined }; }
 }
+
+export const MAX_FILES_PER_SEND = 10;
+export type PickManyOutcome = { ok: true; files: PickedFile[]; skipped: string[] } | { ok: false; reason: 'cancelled' | 'permission_denied' | 'error'; message?: string };
+
+/**
+ * Photos and videos from the library (several at once) or the camera (one photo or video). Photos are shrunk like pickPhoto; videos are sent as
+ * they are. A file that is not allowed (too big, wrong type) is left out and named in `skipped`, the rest are still sent.
+ */
+export async function pickMedia(source: 'library' | 'camera'): Promise<PickManyOutcome> {
+  try {
+    const perm = source === 'camera' ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return { ok: false, reason: 'permission_denied' };
+    const opts: ImagePicker.ImagePickerOptions = {
+      mediaTypes: ['images', 'videos'], quality: 0.9, exif: false, presentationStyle: ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN,
+      ...(source === 'library' ? { allowsMultipleSelection: true, selectionLimit: MAX_FILES_PER_SEND, orderedSelection: true } : {}),
+    };
+    const res = source === 'camera' ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
+    if (res.canceled || !res.assets.length) return { ok: false, reason: 'cancelled' };
+    const files: PickedFile[] = []; const skipped: string[] = [];
+    for (const a of res.assets.slice(0, MAX_FILES_PER_SEND)) {
+      const name = a.fileName ?? (a.type === 'video' ? 'video' : 'photo');
+      try {
+        if (a.type === 'video') {
+          const mimeType = a.mimeType && a.mimeType.startsWith('video/') ? a.mimeType : 'video/mp4';
+          const sizeBytes = a.fileSize ?? new File(a.uri).size;
+          const bad = checkAttachment(mimeType, sizeBytes);
+          if (bad) skipped.push(`${name}: ${bad}`); else files.push({ uri: a.uri, fileName: a.fileName ?? `video-${Date.now()}.mp4`, mimeType, sizeBytes });
+        } else {
+          const scale = Math.max(a.width, a.height) > MAX_SIDE ? (a.width >= a.height ? { width: MAX_SIDE } : { height: MAX_SIDE }) : null;
+          const out = await ImageManipulator.manipulateAsync(a.uri, scale ? [{ resize: scale }] : [], { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG });
+          const sizeBytes = new File(out.uri).size;
+          const bad = checkAttachment('image/jpeg', sizeBytes);
+          if (bad) skipped.push(`${name}: ${bad}`); else files.push({ uri: out.uri, fileName: `photo-${Date.now()}-${files.length}.jpg`, mimeType: 'image/jpeg', sizeBytes });
+        }
+      } catch { skipped.push(`${name}: could not be read`); }
+    }
+    return { ok: true, files, skipped };
+  } catch (e) { return { ok: false, reason: 'error', message: e instanceof Error ? e.message : undefined }; }
+}
+
+/** Several documents at once (PDF, Word, Excel, text, CSV). Not-allowed ones are skipped and named. */
+export async function pickDocuments(): Promise<PickManyOutcome> {
+  try {
+    const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: true });
+    if (res.canceled || !res.assets.length) return { ok: false, reason: 'cancelled' };
+    const files: PickedFile[] = []; const skipped: string[] = [];
+    for (const a of res.assets.slice(0, MAX_FILES_PER_SEND)) {
+      const mimeType = a.mimeType ?? 'application/octet-stream';
+      const bad = checkAttachment(mimeType, a.size ?? 0);
+      if (bad) skipped.push(`${a.name}: ${bad}`); else files.push({ uri: a.uri, fileName: a.name, mimeType, sizeBytes: a.size ?? 0 });
+    }
+    return { ok: true, files, skipped };
+  } catch (e) { return { ok: false, reason: 'error', message: e instanceof Error ? e.message : undefined }; }
+}

@@ -311,11 +311,12 @@ describe('Chat, groups, attachments, push and calls (e2e: real PostgreSQL, real 
     const uploaded = async (id: string) => { const a = await prisma.chatAttachment.findUniqueOrThrow({ where: { id } }); media.objects.set(a.storageKey, { sizeBytes: a.sizeBytes, mimeType: a.mimeType }); return a; };
 
     it('reports that file sharing is available, and lists limits', async () => {
-      expect((await get('/chat/config', 'owner')).body).toMatchObject({ attachments: true, maxAttachmentBytes: 15 * 1024 * 1024 });
+      expect((await get('/chat/config', 'owner')).body).toMatchObject({ attachments: true, maxAttachmentBytes: 50 * 1024 * 1024 });
     });
     it('rejects bad types and sizes, and non-members, before any URL is issued', async () => {
       await req('post', '/chat/attachments', 'owner', { conversationId: conv, fileName: 'virus.exe', mimeType: 'application/x-msdownload', sizeBytes: 100 }).expect(400);
-      await req('post', '/chat/attachments', 'owner', { conversationId: conv, fileName: 'a.png', mimeType: 'image/png', sizeBytes: 16 * 1024 * 1024 }).expect(400);
+      await req('post', '/chat/attachments', 'owner', { conversationId: conv, fileName: 'a.png', mimeType: 'image/png', sizeBytes: 51 * 1024 * 1024 }).expect(400);
+      await req('post', '/chat/attachments', 'owner', { conversationId: conv, fileName: 'clip.mp4', mimeType: 'video/mp4', sizeBytes: 40 * 1024 * 1024 }).expect(201); // videos are allowed up to the limit
       await req('post', '/chat/attachments', 'owner', { conversationId: conv, fileName: 'a.png', mimeType: 'image/png', sizeBytes: 0 }).expect(400);
       await req('post', '/chat/attachments', 'prod', { conversationId: conv, fileName: 'a.png', mimeType: 'image/png', sizeBytes: 100 }).expect(404);
     });

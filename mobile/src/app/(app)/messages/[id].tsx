@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, FlatList, Keyboard, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
 import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { pickDocument, pickPhoto, type PickOutcome } from '../../../lib/attachments';
+import { MAX_FILES_PER_SEND, pickDocuments, pickMedia, type PickManyOutcome } from '../../../lib/attachments';
 import { describeError } from '../../../lib/errors';
 import { buildTimeline, typingText } from '../../../lib/chat/messages';
 import type { ChatMessage, ConversationDetail } from '../../../lib/chat/types';
@@ -122,20 +122,26 @@ export default function Chat() {
   async function attach() {
     if (!config.data?.attachments) return void dialog.notify({ title: 'File sharing is not available', message: 'Ask your administrator to set up file storage for chat.', tone: 'info' });
     const pick = await dialog.ask<'library' | 'camera' | 'file' | 'cancel'>({
-      title: 'Share', message: 'What would you like to send?', tone: 'info', icon: 'attach',
-      actions: [{ label: 'Photo from library', value: 'library' }, { label: 'Take a photo', value: 'camera', variant: 'secondary' }, { label: 'Document', value: 'file', variant: 'secondary' }, { label: 'Cancel', value: 'cancel', variant: 'ghost' }],
+      title: 'Share', message: `You can pick up to ${MAX_FILES_PER_SEND} files at once. Each one is sent as its own message.`, tone: 'info', icon: 'attach',
+      actions: [{ label: 'Photos and videos', value: 'library' }, { label: 'Take a photo or video', value: 'camera', variant: 'secondary' }, { label: 'Documents', value: 'file', variant: 'secondary' }, { label: 'Cancel', value: 'cancel', variant: 'ghost' }],
     });
     if (!pick || pick === 'cancel') return;
     await new Promise((r) => setTimeout(r, Platform.OS === 'ios' ? 700 : 150)); // let the dialog finish closing before a system screen opens (iOS drops the request otherwise)
-    const r: PickOutcome = pick === 'file' ? await pickDocument() : await pickPhoto(pick);
+    const r: PickManyOutcome = pick === 'file' ? await pickDocuments() : await pickMedia(pick);
     if (!r.ok) {
-      if (r.reason === 'permission_denied') void dialog.notify({ title: 'Permission needed', message: pick === 'camera' ? 'Allow camera access in your phone settings to take a photo.' : 'Allow photo access in your phone settings to choose a picture.', tone: 'warn' });
-      else if (r.reason === 'invalid' || r.reason === 'error') void dialog.notify({ title: 'Cannot share this file', message: r.message ?? 'Try a different file.', tone: 'danger' });
+      if (r.reason === 'permission_denied') void dialog.notify({ title: 'Permission needed', message: pick === 'camera' ? 'Allow camera access in your phone settings to take a photo or video.' : 'Allow photo access in your phone settings to choose pictures and videos.', tone: 'warn' });
+      else if (r.reason === 'error') void dialog.notify({ title: 'Cannot share these files', message: r.message ?? 'Try different files.', tone: 'danger' });
       return;
     }
-    const err = chatSender.send({ conversationId: id, kind: r.file.mimeType.startsWith('image/') ? 'IMAGE' : 'FILE', body: text.trim() || undefined, replyToId: replyTo?.id, file: r.file });
-    if (err) return void toast.show(err, 'error');
-    setText(''); setReplyTo(null);
+    // every file becomes its own message, in the order picked; the typed text goes with the first one
+    let sent = 0; const failed = [...r.skipped];
+    for (const file of r.files) {
+      const err = chatSender.send({ conversationId: id, kind: file.mimeType.startsWith('image/') ? 'IMAGE' : 'FILE', body: sent === 0 ? text.trim() || undefined : undefined, replyToId: sent === 0 ? replyTo?.id : undefined, file });
+      if (err) failed.push(`${file.fileName}: ${err}`); else sent++;
+    }
+    if (sent > 0) { setText(''); setReplyTo(null); }
+    if (failed.length) void dialog.notify({ title: sent ? `${sent} sent, ${failed.length} not sent` : 'Nothing was sent', message: failed.slice(0, 4).join('\n'), tone: 'warn' });
+    else if (sent > 1) toast.show(`Sending ${sent} files`);
   }
 
   async function options(m: ChatMessage) {

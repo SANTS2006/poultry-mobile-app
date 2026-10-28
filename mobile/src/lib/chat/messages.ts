@@ -91,11 +91,11 @@ export const formatDuration = (s: number): string => {
 export const formatFileSize = (n: number): string => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 
 /** Same limits and types as the server (it enforces them again); checking first saves a pointless upload. */
-export const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
-export const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'text/plain', 'text/csv', 'application/msword',
+export const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
+export const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/quicktime', 'video/3gpp', 'video/webm', 'application/pdf', 'text/plain', 'text/csv', 'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
 export function checkAttachment(mimeType: string, sizeBytes: number): string | null {
-  if (!ALLOWED_TYPES.includes(mimeType)) return 'This type of file cannot be shared. Pictures, PDFs, Word, Excel, text and CSV files are allowed.';
+  if (!ALLOWED_TYPES.includes(mimeType)) return 'This type of file cannot be shared. Pictures, videos, PDFs, Word, Excel, text and CSV files are allowed.';
   if (sizeBytes < 1) return 'That file is empty.';
   if (sizeBytes > MAX_ATTACHMENT_BYTES) return `Files can be at most ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB.`;
   return null;
