@@ -8,10 +8,18 @@ import type { Endpoints } from '../api/endpoints';
 type Notifications = typeof NotificationsModule;
 /** expo-notifications is loaded lazily and never inside Expo Go (Expo Go removed remote push; importing it there only logs errors). */
 export function loadNotifications(): Notifications | null {
-  if (IS_EXPO_GO) return null;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('expo-notifications') as Notifications;
+  if (IS_EXPO_GO || unavailable) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('expo-notifications') as Notifications;
+  } catch {
+    // The installed app was built before this version of the library (a native part is missing). Push is a convenience, so the app must still
+    // start: notifications stay off until a new build is installed.
+    unavailable = true;
+    return null;
+  }
 }
+let unavailable = false;
 
 /** Android notification channels; ids match the ones the server sends (backend/src/notifications/notification.types.ts). */
 const channels = (N: Notifications): { id: string; name: string; importance: NotificationsModule.AndroidImportance }[] => [
