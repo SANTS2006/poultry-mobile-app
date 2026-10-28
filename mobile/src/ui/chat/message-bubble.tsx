@@ -7,6 +7,7 @@ import { useEndpoints } from '../../state/app';
 import { Text } from '../components';
 import { Icon } from '../icon';
 import { radius, space, useColors } from '../theme';
+import { loadVideo } from '../../services/video';
 import { AttachmentViewer } from './attachment-viewer';
 import { CALL } from './call-colors';
 
@@ -34,12 +35,27 @@ export function Quote({ r, mine }: { r: NonNullable<ChatMessage['replyTo']>; min
   );
 }
 
+/** Plays a video right inside the bubble (play, pause, seek and full screen from the native controls). Only created once someone taps play. */
+function InlineVideo({ url, onSave }: { url: string; onSave: () => void }) {
+  const V = loadVideo()!;
+  const player = V.useVideoPlayer({ uri: url }, (p) => { p.loop = false; p.play(); });
+  return (
+    <View style={{ width: 220, height: 220, borderRadius: radius.md, overflow: 'hidden', backgroundColor: CALL.black }}>
+      <V.VideoView player={player} style={{ width: '100%', height: '100%' }} nativeControls fullscreenOptions={{ enable: true }} allowsPictureInPicture={false} contentFit="contain" />
+      <Pressable accessibilityRole="button" accessibilityLabel="Save video" hitSlop={8} onPress={onSave} style={{ position: 'absolute', top: 6, right: 6, width: 32, height: 32, borderRadius: 16, backgroundColor: CALL.glass, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name="download-outline" size={18} color={CALL.fg} />
+      </Pressable>
+    </View>
+  );
+}
+
 function AttachmentView({ a, mine, kind }: { a: NonNullable<ChatMessage['attachment']>; mine: boolean; kind: string }) {
   const c = useColors();
   const isImage = kind === 'IMAGE';
   const isVideo = !isImage && a.mimeType.startsWith('video/');
   const q = useAttachmentUrl(a.id, true);
   const [open, setOpen] = useState(false);
+  const [playing, setPlaying] = useState(false);
   const fg = mine ? c.onPrimary : c.text;
   const viewer = <AttachmentViewer file={open && q.data ? { url: q.data.url, fileName: a.fileName, mimeType: a.mimeType, sizeBytes: a.sizeBytes } : null} image={isImage} video={isVideo} onClose={() => setOpen(false)} />;
   if (isImage) {
@@ -55,12 +71,15 @@ function AttachmentView({ a, mine, kind }: { a: NonNullable<ChatMessage['attachm
   if (isVideo) {
     return (
       <>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Video ${a.fileName}, ${formatFileSize(a.sizeBytes)}. Tap to play or save`} disabled={!q.data} onPress={() => setOpen(true)}
-          style={{ width: 220, height: 160, borderRadius: radius.md, backgroundColor: CALL.bg, alignItems: 'center', justifyContent: 'center', gap: space.xs }}>
-          <Icon name="play-circle" size={52} color={CALL.fg} />
-          <Text variant="caption" color={CALL.fg} numberOfLines={1} style={{ maxWidth: 200 }}>{a.fileName}</Text>
-          <Text variant="caption" color={CALL.fg}>{formatFileSize(a.sizeBytes)}{q.isError ? ' · unavailable' : ''}</Text>
-        </Pressable>
+        {playing && q.data ? <InlineVideo url={q.data.url} onSave={() => setOpen(true)} /> : (
+          <Pressable accessibilityRole="button" accessibilityLabel={`Video ${a.fileName}, ${formatFileSize(a.sizeBytes)}. Tap to play`} disabled={!q.data}
+            onPress={() => (loadVideo() ? setPlaying(true) : setOpen(true))}
+            style={{ width: 220, height: 160, borderRadius: radius.md, backgroundColor: CALL.bg, alignItems: 'center', justifyContent: 'center', gap: space.xs }}>
+            <Icon name="play-circle" size={52} color={CALL.fg} />
+            <Text variant="caption" color={CALL.fg} numberOfLines={1} style={{ maxWidth: 200 }}>{a.fileName}</Text>
+            <Text variant="caption" color={CALL.fg}>{formatFileSize(a.sizeBytes)}{q.isError ? ' · unavailable' : ''}</Text>
+          </Pressable>
+        )}
         {viewer}
       </>
     );
