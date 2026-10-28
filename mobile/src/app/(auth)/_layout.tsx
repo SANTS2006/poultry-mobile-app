@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { useColors } from '../../ui/theme';
 
-export const unstable_settings = { initialRouteName: 'login' };
+export const unstable_settings = { anchor: 'login' };
 
 export default function AuthLayout() {
   const c = useColors();
