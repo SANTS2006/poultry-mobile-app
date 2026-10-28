@@ -1,3 +1,4 @@
+import { NativeModules } from 'react-native';
 import { IS_EXPO_GO } from '../lib/runtime';
 import { CallsUnavailableError, MediaPermissionError, type IceServer, type MediaEngine, type MediaSession, type SessionDescription } from './call-manager';
 
@@ -6,11 +7,11 @@ type RTC = typeof import('react-native-webrtc');
 
 /** react-native-webrtc is a native module: it is loaded lazily and never in Expo Go (calls need a development or store build). */
 function loadRtc(): RTC | null {
-  if (IS_EXPO_GO) return null;
+  if (IS_EXPO_GO || !NativeModules.WebRTCModule) return null; // missing native part: requiring it would show a fatal error
   try { return require('react-native-webrtc') as RTC; } catch { return null; }
 }
 function loadInCall(): any | null {
-  if (IS_EXPO_GO) return null;
+  if (IS_EXPO_GO || !NativeModules.InCallManager) return null;
   try { return require('react-native-incall-manager').default; } catch { return null; }
 }
 
