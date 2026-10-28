@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { requireOptionalNativeModule } from 'expo';
 import * as Device from 'expo-device';
 import type * as NotificationsModule from 'expo-notifications';
 import { IS_EXPO_GO } from '../lib/runtime';
@@ -6,20 +7,30 @@ import { Platform } from 'react-native';
 import type { Endpoints } from '../api/endpoints';
 
 type Notifications = typeof NotificationsModule;
-/** expo-notifications is loaded lazily and never inside Expo Go (Expo Go removed remote push; importing it there only logs errors). */
+const NATIVE_PARTS = ['ExpoPushTokenManager', 'ExpoNotificationsHandlerModule', 'ExpoNotificationPermissionsModule', 'ExpoNotificationScheduler', 'ExpoNotificationsEmitter'];
+
+/** True when the INSTALLED app contains every native part of expo-notifications that this version of the JavaScript needs. */
+function nativePartsPresent(): boolean {
+  const names = Platform.OS === 'android' ? [...NATIVE_PARTS, 'ExpoTopicSubscriptionModule'] : NATIVE_PARTS;
+  return names.every((n) => requireOptionalNativeModule(n) !== null);
+}
+
+let checked: Notifications | null | undefined;
+/**
+ * expo-notifications is loaded lazily and never inside Expo Go (Expo Go removed remote push). It is also only loaded when the installed app really
+ * has its native parts: requiring it otherwise makes React Native show a fatal "Cannot find native module" screen that no try/catch can stop (the
+ * app was built before this version of the library). In that case push stays off until a new build is installed; everything else works.
+ */
 export function loadNotifications(): Notifications | null {
-  if (IS_EXPO_GO || unavailable) return null;
+  if (checked !== undefined) return checked;
+  if (IS_EXPO_GO || !nativePartsPresent()) return (checked = null);
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require('expo-notifications') as Notifications;
+    return (checked = require('expo-notifications') as Notifications);
   } catch {
-    // The installed app was built before this version of the library (a native part is missing). Push is a convenience, so the app must still
-    // start: notifications stay off until a new build is installed.
-    unavailable = true;
-    return null;
+    return (checked = null);
   }
 }
-let unavailable = false;
 
 /** Android notification channels; ids match the ones the server sends (backend/src/notifications/notification.types.ts). */
 const channels = (N: Notifications): { id: string; name: string; importance: NotificationsModule.AndroidImportance }[] => [

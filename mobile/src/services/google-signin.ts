@@ -1,3 +1,4 @@
+import { TurboModuleRegistry } from 'react-native';
 import { IS_EXPO_GO } from '../lib/runtime';
 
 /** Public OAuth client ids (not secrets). The WEB client id is required; it is also the audience the server checks. */
@@ -13,7 +14,7 @@ export const googleConfigured = (): boolean => GOOGLE_WEB_CLIENT_ID.length > 0;
 type Module = typeof import('@react-native-google-signin/google-signin');
 /** The native module is loaded lazily and never in Expo Go (it needs the installed app build). */
 function load(): Module | null {
-  if (IS_EXPO_GO) return null;
+  if (IS_EXPO_GO || !TurboModuleRegistry.get('RNGoogleSignin')) return null; // missing native part: requiring it would show a fatal error
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- optional native module
   try { return require('@react-native-google-signin/google-signin') as Module; } catch { return null; }
 }
