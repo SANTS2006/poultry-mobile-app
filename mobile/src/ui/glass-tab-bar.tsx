@@ -11,14 +11,17 @@ interface Options { title?: string; href?: string | null; tabBarIcon?: (p: { foc
 export interface GlassTabBarProps {
   state: { index: number; routes: Route[] };
   descriptors: Record<string, { options: Options }>;
-  navigation: { emit(e: { type: 'tabPress'; target: string; canPreventDefault: true }): { defaultPrevented: boolean }; navigate(name: string): void };
+  /** Expo Router 58 and newer pass an emitter and navigateToTab; older versions passed a navigation object. Both are supported. */
+  emitter?: { emit(e: { type: 'tabPress'; target: string; canPreventDefault: true }): { defaultPrevented: boolean } };
+  navigateToTab?: (routeKey: string) => void;
+  navigation?: { emit(e: { type: 'tabPress'; target: string; canPreventDefault: true }): { defaultPrevented: boolean }; navigate(name: string): void };
 }
 
 /**
  * iOS tab bar: a floating glass capsule near the bottom edge (liquid glass on iOS 26, a blur material before). The selected tab sits in a
  * soft pill. Screens leave room for it through their bottom padding.
  */
-export function GlassTabBar({ state, descriptors, navigation }: GlassTabBarProps) {
+export function GlassTabBar({ state, descriptors, emitter, navigateToTab, navigation }: GlassTabBarProps) {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const visible = state.routes.filter((r) => descriptors[r.key]?.options.href !== null);
@@ -34,8 +37,8 @@ export function GlassTabBar({ state, descriptors, navigation }: GlassTabBarProps
             <Pressable
               key={route.key} accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: focused }}
               onPress={() => {
-                const e = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-                if (!focused && !e.defaultPrevented) { selectHaptic(); navigation.navigate(route.name); }
+                const e = (emitter ?? navigation)?.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+                if (!focused && !e?.defaultPrevented) { selectHaptic(); if (navigateToTab) navigateToTab(route.key); else navigation?.navigate(route.name); }
               }}
               style={{ flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, backgroundColor: focused ? c.primarySoft : 'transparent', gap: 2 }}
             >
